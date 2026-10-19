@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.0
+
+- 新增 5 分钟参数高原研究：BaoStock 数据层、SQLite 缓存、按交易日 T+1。
+- 新增 6 个月窗口、70/30 样本内/样本外、滚动 OOS 和最终锁定盲测。
+- 新增已实现年化、Calmar、Sharpe、Sortino、最大回撤等指标。
+- API schema_version 升级到 2。
+
 ## 2.2.0
 
 - 增加 Pydantic API 响应契约与 `schema_version`。

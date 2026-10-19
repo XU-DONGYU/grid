@@ -12,14 +12,20 @@ from grid_analyzer.api.schemas import (
     HealthResponse,
     HeatmapPayload,
     HeatmapResponse,
+    IntradayHeatmapData,
+    IntradayHeatmapRequest,
+    IntradayHeatmapResponse,
     VersionResponse,
 )
 from grid_analyzer.config import get_settings
 from grid_analyzer.constants import SCHEMA_VERSION
 from grid_analyzer.data.base import MarketDataProvider
+from grid_analyzer.data.intraday import IntradayRepository, NoDataError
 from grid_analyzer.data.tencent import TencentMarketDataProvider
 from grid_analyzer.services.analysis import AnalysisService
 from grid_analyzer.services.heatmap import build_heatmap_payload
+from grid_analyzer.services.intraday_heatmap import IntradayHeatmapService
+from grid_analyzer.services.intraday_research import InsufficientIntradayDataError
 from grid_analyzer.services.research import run_parameter_sweep
 
 router = APIRouter()
@@ -33,6 +39,10 @@ def get_analysis_service(
     provider: MarketDataProvider = Depends(get_market_data_provider),
 ) -> AnalysisService:
     return AnalysisService(provider)
+
+
+def get_intraday_repository() -> IntradayRepository:
+    return IntradayRepository()
 
 
 @router.get("/api/health", response_model=HealthResponse)
@@ -136,3 +146,23 @@ def heatmap(
     payload = build_heatmap_payload(results, code=code, metric=metric)
     payload["name"] = quote.get("name", "")
     return HeatmapResponse(data=HeatmapPayload.model_validate(payload))
+
+
+@router.post("/api/intraday-heatmap", response_model=IntradayHeatmapResponse)
+def intraday_heatmap(
+    request: IntradayHeatmapRequest,
+    repository: IntradayRepository = Depends(get_intraday_repository),
+    quote_provider: MarketDataProvider = Depends(get_market_data_provider),
+) -> IntradayHeatmapResponse:
+    service = IntradayHeatmapService(repository, quote_provider)
+    try:
+        data = service.run(request)
+    except InsufficientIntradayDataError as exc:
+        raise HTTPException(400, str(exc))
+    except NoDataError as exc:
+        raise HTTPException(404, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return IntradayHeatmapResponse(data=IntradayHeatmapData.model_validate(data))

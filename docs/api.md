@@ -28,7 +28,7 @@
 ```json
 {
   "ok": true,
-  "schema_version": 1,
+  "schema_version": 2,
   "data": {}
 }
 ```
@@ -80,12 +80,47 @@
 
 前端页面中的“参数高原热力图”面板会调用该接口，并允许直接编辑格距、止损和初始底仓列表。
 
+## POST /api/intraday-heatmap
+
+基于 BaoStock 5 分钟数据和日线 ATR(14) 生成参数高原、滚动样本外验证和最终锁定盲测。
+
+请求体主要字段：
+
+| 字段 | 默认值 | 说明 |
+|---|---|---|
+| `code` | 必填 | 股票代码 |
+| `capital` | `100000` | 总资金 |
+| `fee` | `0.025` | 单边佣金 % |
+| `min_fee` | `5` | 单笔最低佣金 |
+| `init_position` | `0` | 初始底仓比例 |
+| `stop_losses` | `[0,3,5,8]` | 破网止损列表 |
+| `k_start` / `k_end` / `k_step` | `0.5 / 1.5 / 0.05` | 网格密度 K 扫描 |
+| `window_days` | `126` | 每个窗口约 6 个月 |
+| `in_sample_ratio` | `0.70` | 样本内比例 |
+| `final_blind_days` | `63` | 最终锁定盲测约 3 个月 |
+| `min_oos_days` | `252` | 累计样本外至少约 12 个月 |
+| `primary_metric` | `realized_annual_pct` | 参数高原主指标 |
+| `history_days` | `500` | 拉取历史交易日数 |
+
+响应 `data` 包含：
+
+- `context`：ATR、区间、资金、数据快照
+- `k_values`、`stop_losses`
+- `cells`：每个 K × 止损的样本内聚合指标和 plateau_score
+- `folds`：每个滚动窗口的样本内/样本外结果
+- `parameter_stability`：各窗口选中的 K 和止损
+- `locked`：锁定参数和最终盲测结果
+- `summary`：累计 OOS 覆盖、正收益窗口比例、均值/最差/标准差
+- `data_snapshot`：BaoStock 数据区间和 bar 数量
+
+该接口计算量较大，当前为同步调用；后续可按性能情况改为后台任务。
+
 ## GET /api/health
 
 返回：
 
 ```json
-{"ok": true, "version": "2.2.0", "env": "development"}
+{"ok": true, "version": "2.3.0", "env": "development"}
 ```
 
 ## GET /api/version
@@ -93,7 +128,7 @@
 返回：
 
 ```json
-{"version": "2.2.0", "schema_version": 1}
+{"version": "2.3.0", "schema_version": 2}
 ```
 
 ## 错误响应

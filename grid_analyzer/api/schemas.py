@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from grid_analyzer.constants import SCHEMA_VERSION
 
@@ -227,3 +229,131 @@ class HeatmapResponse(ApiModel):
     ok: bool = True
     schema_version: int = SCHEMA_VERSION
     data: HeatmapPayload
+
+
+class IntradayHeatmapRequest(ApiModel):
+    code: str
+    capital: float = Field(100000, ge=1000, le=1e8)
+    fee: float = Field(0.025, ge=0, le=0.3)
+    min_fee: float = Field(5.0, ge=0, le=100)
+    init_position: float = Field(0.0, ge=0, le=1.0)
+    stop_losses: list[float] = Field(default_factory=lambda: [0.0, 3.0, 5.0, 8.0])
+    k_start: float = Field(0.5, gt=0)
+    k_end: float = Field(1.5, gt=0)
+    k_step: float = Field(0.05, gt=0)
+    window_days: int = Field(126, ge=10, le=252)
+    in_sample_ratio: float = Field(0.70, gt=0, lt=1)
+    final_blind_days: int = Field(63, ge=0, le=252)
+    min_oos_days: int = Field(252, ge=0, le=1000)
+    primary_metric: Literal[
+        "realized_annual_pct",
+        "total_annual_pct",
+        "calmar",
+        "sharpe",
+        "sortino",
+        "max_drawdown_pct",
+    ] = "realized_annual_pct"
+    history_days: int = Field(500, ge=60, le=3000)
+
+    @field_validator("stop_losses")
+    @classmethod
+    def validate_stop_losses(cls, value: list[float]) -> list[float]:
+        if not value:
+            raise ValueError("stop_losses 不能为空")
+        return sorted({float(item) for item in value})
+
+
+class IntradayContext(ApiModel):
+    code: str
+    name: str = ""
+    atr_pct: float
+    range_lower: float
+    range_upper: float
+    capital: float
+    fee: float
+    min_fee: float
+    init_position: float
+    data_start: str
+    data_end: str
+    bar_count: int
+    daily_count: int
+
+
+class AggregatedMetric(ApiModel):
+    mean: float
+    stdev: float
+    worst: float
+
+
+class IntradayCell(ApiModel):
+    k: float
+    stop_loss: float
+    fold_count: int
+    metrics: dict[str, AggregatedMetric]
+    plateau_score: float
+
+
+class IntradayFold(ApiModel):
+    in_sample_start: str
+    in_sample_end: str
+    oos_start: str
+    oos_end: str
+    selected_k: float
+    selected_stop_loss: float
+    atr_pct: float
+    gap_pct: float
+    capital_constrained: bool
+    in_sample_metrics: dict[str, float | None]
+    oos_metrics: dict[str, float | None]
+
+
+class ParameterStability(ApiModel):
+    k_values: list[float]
+    stop_losses: list[float]
+    change_count: int
+
+
+class BlindResult(ApiModel):
+    start: str
+    end: str
+    k: float
+    stop_loss: float
+    gap_pct: float
+    metrics: dict[str, float | None]
+
+
+class LockedParams(ApiModel):
+    k: float
+    stop_loss: float
+    blind: BlindResult | None = None
+
+
+class IntradaySummary(ApiModel):
+    fold_count: int
+    oos_coverage_days: int
+    oos_coverage_months: float
+    positive_oos_ratio: float
+    oos_primary_mean: float
+    oos_primary_worst: float
+    oos_primary_stdev: float
+
+
+class IntradayHeatmapData(ApiModel):
+    context: IntradayContext
+    k_values: list[float]
+    stop_losses: list[float]
+    in_sample_days: int
+    oos_days: int
+    folds: list[IntradayFold]
+    cells: list[IntradayCell]
+    parameter_stability: ParameterStability
+    locked: LockedParams
+    summary: IntradaySummary
+    config: dict
+    data_snapshot: dict
+
+
+class IntradayHeatmapResponse(ApiModel):
+    ok: bool = True
+    schema_version: int = SCHEMA_VERSION
+    data: IntradayHeatmapData

@@ -1,4 +1,4 @@
-const SUPPORTED_SCHEMA_VERSION = 1;
+const SUPPORTED_SCHEMA_VERSION = 2;
 
 async function requestJson(url, fallbackMessage) {
   const res = await fetch(url);
