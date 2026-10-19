@@ -80,10 +80,10 @@ make scan
 ```text
 .
 ├─ app.py                  # FastAPI 兼容入口
-├─ index.html              # 当前前端，后续拆分为静态模块
 ├─ file.md                 # 网格交易方法论文档
 ├─ grid_analyzer/
 │  ├─ main.py              # create_app、中间件、首页
+│  ├─ web/                 # HTML 骨架、CSS、ES Modules
 │  ├─ config.py            # 环境变量配置
 │  ├─ cache.py             # 行情 TTL 缓存
 │  ├─ constants.py         # 全局常量

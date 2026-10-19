@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股网格交易参数分析器</title>
+<link rel="stylesheet" href="/static/css/styles.css">
+</head>
+<body>
+<header>
+  <div class="inner">
+    <h1>📉 A股网格交易参数分析器</h1>
+    <p>输入股票代码，自动分析中轴 / 波动率 / 网格区间 / 网格密度 / 资金分配，并按 T+1、现金约束与破网止损回测近120个交易日</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav id="toc">
+    <a href="#p-stock">股票概览</a>
+    <a href="#p-axis">中轴/波动率</a>
+    <a href="#p-grid">网格参数</a>
+    <a href="#p-chart">价格走势</a>
+    <a href="#p-bt">历史回测</a>
+    <a href="#p-risk">风险提示</a>
+  </nav>
+
+  <div class="panel">
+    <div class="search-row">
+      <div class="field"><label>股票代码</label><input id="code" placeholder="如 600000 / 000001 / 300750" maxlength="8"></div>
+      <div class="field"><label>总资金（元）</label><input id="capital" type="number" value="100000" min="1000" step="1000"></div>
+      <div class="field"><label>单边佣金 %</label><input id="fee" type="number" value="0.025" min="0" max="0.3" step="0.005"></div>
+      <div class="field"><label>最低佣金（元）</label><input id="minfee" type="number" value="5" min="0" max="100" step="1"></div>
+      <label class="field check-field" title="勾选后全部资金只跑主网格，不设辅助网格"><input type="checkbox" id="single"><span>仅主网格</span></label>
+      <div class="field"><label>主网格资金占比</label><input id="ratio" type="number" value="0.7" min="0.5" max="1.0" step="0.05"></div>
+      <div class="field"><label>初始底仓 %</label><input id="initpos" type="number" value="0" min="0" max="100" step="5" title="0 表示中性零底仓启动；大于0时按回测首日开盘价真实扣款建仓"></div>
+      <div class="field"><label>破网止损 %</label><input id="stoploss" type="number" value="5" min="0" max="50" step="1" title="价格跌破网格下限该比例后清仓并停止交易；0 表示关闭"></div>
+      <button id="btn">开始分析</button>
+    </div>
+    <div class="hint">数据来源：腾讯财经实时行情 + 前复权日K线（指标取约250日，图表/回测取最近120日） · 间距同时锚定 ATR、日波动率与「价差+往返成本」，默认零底仓启动</div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="panel loading" id="loading"><span class="spin"></span>正在获取行情并计算网格参数…</div>
+
+  <div id="result">
+
+    <div class="panel" id="p-stock">
+      <div class="card-title"><span class="bar"></span>股票概览</div>
+      <div class="stock-head">
+        <span class="name" id="s-name"></span>
+        <span class="code" id="s-code"></span>
+        <span class="price" id="s-price"></span>
+        <span id="s-change"></span>
+        <span id="s-liq"></span>
+      </div>
+      <div class="kv-grid" id="s-kv"></div>
+    </div>
+
+    <div class="panel" id="p-axis">
+      <div class="card-title"><span class="bar"></span>中轴 / 波动率 / 趋势判定</div>
+      <div class="grid2">
+        <div>
+          <h3 style="font-size:13px;margin-bottom:8px;color:var(--text2)">中轴三种算法</h3>
+          <div id="axis-rows"></div>
+          <div class="note">推荐使用「60日中位数」：抗单日暴涨暴跌，最稳健。中轴是动态锚点，建议每月校准一次。</div>
+        </div>
+        <div>
+          <h3 style="font-size:13px;margin-bottom:8px;color:var(--text2)">波动率与趋势</h3>
+          <div class="kv-grid" id="vol-kv" style="grid-template-columns:1fr 1fr"></div>
+          <div style="margin-top:12px">
+            <div style="font-size:12px;color:var(--text2);margin-bottom:6px">网格适配度评分：<span id="fit-label"></span></div>
+            <div class="score-wrap"><div class="score-bar"><i id="fit-bar"></i></div><span class="score-num" id="fit-num"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="p-grid">
+      <div class="card-title"><span class="bar"></span>网格参数建议（主网格 + 辅助网格）</div>
+      <div class="grid2">
+        <div class="sub-card main">
+          <h3>主网格（赚大波段）<span class="role">核心收益</span></h3>
+          <div id="grid-main"></div>
+        </div>
+        <div class="sub-card aux">
+          <h3>辅助网格（扫碎银子）<span class="role">降本 + 防踏空</span></h3>
+          <div id="grid-aux"></div>
+        </div>
+      </div>
+      <div class="note" id="grid-note"></div>
+    </div>
+
+    <div class="panel" id="p-chart">
+      <div class="card-title"><span class="bar"></span>价格走势与网格区间（近120个交易日）
+        <span class="layer-toggle">
+          <button id="layer-main" class="layer-btn on-main" title="显示/隐藏主网格图层（色带 + 档位虚线 + 价格标签）">主网格</button>
+          <button id="layer-aux" class="layer-btn on-aux" title="显示/隐藏辅助网格图层（色带 + 档位虚线 + 价格标签）">辅助网格</button>
+        </span>
+      </div>
+      <div class="chart-box" id="chart"></div>
+      <div class="note" id="chart-note"></div>
+    </div>
+
+    <div class="panel" id="p-bt">
+      <div class="card-title"><span class="bar"></span>历史回测（近120个交易日）</div>
+      <div id="bt-wrap"></div>
+      <div id="equity-chart"></div>
+      <div class="note" id="bt-note"></div>
+      <div class="note">回测假设：事件驱动 + T+1；当日买入不可当日卖出；买入受可用现金约束；跳空按前收盘→开盘→日内高低→收盘路径估算；费用含双边佣金（含最低佣金）与印花税（卖出0.05%）；初始底仓按首日开盘价真实扣款（默认0，即中性零底仓）；跌破网格下限指定比例后清仓并停止交易。历史表现不代表未来收益。</div>
+    </div>
+
+    <div class="panel" id="p-risk">
+      <div class="card-title"><span class="bar"></span>风险提示</div>
+      <div id="risks"></div>
+      <div class="disclaim">⚠️ 本工具仅为参数计算参考，不构成投资建议。网格交易在单边下跌行情中会持续买入导致仓位加重、浮亏扩大；单边上涨行情会提前卖光而踏空。请结合自身风险承受能力决策，A股实行 T+1 且委托单当日有效。</div>
+    </div>
+
+  </div>
+</div>
+
+<footer>A股网格交易参数分析器 <span id="ver"></span> · 数据来源：腾讯财经 · 仅供参考，不构成投资建议</footer>
+<script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

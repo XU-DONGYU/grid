@@ -116,7 +116,18 @@ def test_root_serves_html(client: TestClient) -> None:
     response = client.get("/")
     assert response.status_code == 200
     assert "A股网格交易参数分析器" in response.text
+    assert "/static/js/main.js" in response.text
     assert "no-store" in response.headers["cache-control"]
+
+
+def test_static_assets_are_served(client: TestClient) -> None:
+    css = client.get("/static/css/styles.css")
+    assert css.status_code == 200
+    assert ":root" in css.text
+
+    js = client.get("/static/js/main.js")
+    assert js.status_code == 200
+    assert "analyzeMarket" in js.text
 
 
 def test_invalid_code_returns_400(client: TestClient) -> None:
