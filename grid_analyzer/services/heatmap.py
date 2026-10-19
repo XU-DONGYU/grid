@@ -70,6 +70,7 @@ def _prepare_heatmap(
             "direction": "lower" if metric in LOWER_IS_BETTER else "higher",
             "gap_scales": [],
             "stop_losses": [],
+            "init_positions": [],
             "low": 0.0,
             "high": 0.0,
             "best": None,
@@ -85,6 +86,7 @@ def _prepare_heatmap(
 
     gap_scales = sorted({key[0] for key in grouped})
     stop_losses = sorted({key[1] for key in grouped})
+    init_positions = sorted({result.params.init_position for result in results})
     matrix = {
         key: (statistics.mean(values), len(values))
         for key, values in grouped.items()
@@ -122,6 +124,7 @@ def _prepare_heatmap(
         "direction": "lower" if reverse else "higher",
         "gap_scales": gap_scales,
         "stop_losses": stop_losses,
+        "init_positions": init_positions,
         "low": low,
         "high": high,
         "best": {

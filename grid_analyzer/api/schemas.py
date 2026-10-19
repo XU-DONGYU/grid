@@ -215,6 +215,7 @@ class HeatmapPayload(ApiModel):
     direction: str
     gap_scales: list[float]
     stop_losses: list[float]
+    init_positions: list[float]
     low: float
     high: float
     best: HeatmapBest | None = None

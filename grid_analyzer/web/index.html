@@ -124,11 +124,23 @@
             <option value="max_drawdown_pct">最大回撤</option>
           </select>
         </div>
+        <div class="field">
+          <label>格距缩放</label>
+          <input id="heatmap-gap-scales" type="text" value="0.8,0.9,1.0,1.1,1.2" title="逗号分隔的倍数">
+        </div>
+        <div class="field">
+          <label>破网止损 %</label>
+          <input id="heatmap-stop-losses" type="text" value="0,3,5,8" title="逗号分隔的百分比">
+        </div>
+        <div class="field">
+          <label>初始底仓 %</label>
+          <input id="heatmap-init-positions" type="text" value="0,20" title="逗号分隔的百分比">
+        </div>
         <button id="heatmap-btn" class="secondary-btn">生成热力图</button>
         <span id="heatmap-status" class="hint"></span>
       </div>
       <div id="heatmap-wrap"></div>
-      <div class="note">基于当前股票、资金与佣金，使用最近约 250 日数据做 Walk-forward 参数扫描；横轴为格距缩放，纵轴为破网止损，颜色越绿表示该指标越优。</div>
+      <div class="note">基于当前股票、资金与佣金，使用最近约 250 日数据做 Walk-forward 参数扫描；横轴为格距缩放，纵轴为破网止损。格距、止损、初始底仓用逗号分隔；每个单元格为多个初始底仓参数的均值，颜色越绿表示该指标越优。</div>
     </div>
 
     <div class="panel" id="p-risk">

@@ -62,9 +62,9 @@
 | `calib_days` | `120` | 每个窗口的校准天数 |
 | `test_days` | `60` | 每个窗口的测试天数 |
 | `step` | `60` | 滚动步长 |
-| `gap_scales` | `0.9,1.0,1.1` | 格距缩放列表 |
-| `stop_losses` | `0,5` | 止损列表 |
-| `init_positions` | `0,0.2` | 初始底仓列表 |
+| `gap_scales` | `0.8,0.9,1.0,1.1,1.2` | 格距缩放列表 |
+| `stop_losses` | `0,3,5,8` | 止损列表 |
+| `init_positions` | `0,0.2` | 初始底仓列表（0~1） |
 | `metric` | `plateau_score` | 热力图指标 |
 | `spread_pct` | `0.05` | 历史价差代理 % |
 
@@ -72,13 +72,13 @@
 
 - `name` / `code`
 - `metric` / `metric_label` / `direction`
-- `gap_scales` / `stop_losses`
+- `gap_scales` / `stop_losses` / `init_positions`
 - `cells`：每个单元格的 `gap_scale`、`stop_loss`、`value`、`count`、`color`、`is_best`
 - `best`：当前指标最优组合
 - `low` / `high`：颜色图例范围
 - `sample_count`：参数组合数量
 
-前端页面中的“参数高原热力图”面板会调用该接口。
+前端页面中的“参数高原热力图”面板会调用该接口，并允许直接编辑格距、止损和初始底仓列表。
 
 ## GET /api/health
 

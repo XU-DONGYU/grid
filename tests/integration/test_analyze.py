@@ -167,6 +167,7 @@ def test_heatmap_api_contract(client_for: Any, fixture_002541: dict) -> None:
     assert contract.data.metric == "mean_return_pct"
     assert contract.data.gap_scales == [0.9, 1.0]
     assert contract.data.stop_losses == [0.0, 5.0]
+    assert contract.data.init_positions == [0.0]
     assert len(contract.data.cells) == 4
     assert contract.data.sample_count == 4
     assert contract.data.best is not None

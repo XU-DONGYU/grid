@@ -28,13 +28,25 @@ export async function analyzeMarket({ code, capital, fee, minfee, ratio, initpos
   return requestJson(`/api/analyze?${params.toString()}`, '分析失败，请稍后重试');
 }
 
-export async function fetchHeatmap({ code, capital, fee, minfee, metric }) {
+export async function fetchHeatmap({
+  code,
+  capital,
+  fee,
+  minfee,
+  metric,
+  gapScales,
+  stopLosses,
+  initPositions,
+}) {
   const params = new URLSearchParams({
     code,
     capital,
     fee,
     min_fee: minfee,
     metric,
+    gap_scales: gapScales,
+    stop_losses: stopLosses,
+    init_positions: initPositions,
   });
   return requestJson(`/api/heatmap?${params.toString()}`, '热力图计算失败，请稍后重试');
 }

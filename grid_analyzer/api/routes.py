@@ -88,8 +88,8 @@ def heatmap(
     calib_days: int = Query(120, ge=60, le=1000),
     test_days: int = Query(60, ge=20, le=500),
     step: int = Query(60, ge=20, le=500),
-    gap_scales: str = Query("0.9,1.0,1.1"),
-    stop_losses: str = Query("0,5"),
+    gap_scales: str = Query("0.8,0.9,1.0,1.1,1.2"),
+    stop_losses: str = Query("0,3,5,8"),
     init_positions: str = Query("0,0.2"),
     metric: Literal[
         "plateau_score",

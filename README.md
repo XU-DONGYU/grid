@@ -81,7 +81,7 @@ make test
   --calib-days 250 --test-days 60 --step 60
 ```
 
-输出写入 `reports/`（已被 git 忽略），同时生成自包含 HTML 热力图，默认路径为 `reports/sweep_<code>.html`。可用 `--heatmap-metric` 切换指标。网页端的“参数高原热力图”面板也会调用同一套 Walk-forward 逻辑。扫描结果包含：
+输出写入 `reports/`（已被 git 忽略），同时生成自包含 HTML 热力图，默认路径为 `reports/sweep_<code>.html`。可用 `--heatmap-metric` 切换指标。网页端的“参数高原热力图”面板也会调用同一套 Walk-forward 逻辑，并允许编辑格距、止损、初始底仓和评估指标。扫描结果包含：
 
 - `mean_return_pct`：样本外平均收益
 - `worst_return_pct`：最差窗口收益

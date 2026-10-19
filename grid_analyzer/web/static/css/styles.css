@@ -43,6 +43,8 @@
   .secondary-btn:hover{background:var(--blue-light);border-color:var(--blue)}
   .secondary-btn:disabled{opacity:.5;cursor:not-allowed}
   .heatmap-controls{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}
+  #heatmap-gap-scales,#heatmap-stop-losses,#heatmap-init-positions{width:170px}
+  #heatmap-metric{min-width:150px}
   #heatmap-wrap{overflow-x:auto;margin-top:6px}
   .hm-head{font-size:13px;color:var(--text2);margin:4px 0 10px}
   .hm-table{border-collapse:separate;border-spacing:4px;width:100%;table-layout:fixed;min-width:560px}

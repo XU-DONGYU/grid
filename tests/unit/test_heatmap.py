@@ -81,6 +81,7 @@ def test_build_heatmap_payload() -> None:
     assert payload["code"] == "TEST"
     assert payload["gap_scales"] == [0.9, 1.0]
     assert payload["stop_losses"] == [0.0, 5.0]
+    assert payload["init_positions"] == [0.0]
     assert len(payload["cells"]) == 4
     assert payload["best"] == {
         "gap_scale": 1.0,

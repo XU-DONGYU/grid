@@ -41,8 +41,10 @@ export function renderHeatmap(data, container) {
     '<div class="hm-legend-bar"></div>' +
     `<span>${metricValue(data.high, data.metric)}</span></div>`;
 
+  const initText = (data.init_positions || []).map(item => fmt(item * 100, 0) + '%').join(' / ');
+  const initPart = initText ? ` · 初始底仓 ${initText}（格内均值）` : '';
   container.innerHTML =
-    `<div class="hm-head">${data.name || ''} ${data.code || ''} · ${data.metric_label} · ${direction} · ${data.sample_count} 组参数</div>` +
+    `<div class="hm-head">${data.name || ''} ${data.code || ''} · ${data.metric_label} · ${direction}${initPart} · ${data.sample_count} 组参数</div>` +
     `<table class="hm-table"><thead><tr>${header}</tr></thead><tbody>${rows}</tbody></table>` +
     legend + best;
 }

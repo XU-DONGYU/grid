@@ -17,6 +17,10 @@ function saveInputs() {
       single: $('single').checked,
       initpos: $('initpos').value,
       stoploss: $('stoploss').value,
+      hmGap: $('heatmap-gap-scales').value,
+      hmStop: $('heatmap-stop-losses').value,
+      hmInit: $('heatmap-init-positions').value,
+      hmMetric: $('heatmap-metric').value,
     }));
   } catch (e) {
     // localStorage may be unavailable in private mode.
@@ -39,6 +43,10 @@ function restoreInputs() {
     if (saved.single) $('single').checked = saved.single;
     if (saved.initpos !== undefined && saved.initpos !== '') $('initpos').value = saved.initpos;
     if (saved.stoploss !== undefined && saved.stoploss !== '') $('stoploss').value = saved.stoploss;
+    if (saved.hmGap !== undefined && saved.hmGap !== '') $('heatmap-gap-scales').value = saved.hmGap;
+    if (saved.hmStop !== undefined && saved.hmStop !== '') $('heatmap-stop-losses').value = saved.hmStop;
+    if (saved.hmInit !== undefined && saved.hmInit !== '') $('heatmap-init-positions').value = saved.hmInit;
+    if (saved.hmMetric) $('heatmap-metric').value = saved.hmMetric;
     syncSingleUI();
   } catch (e) {
     // Ignore malformed or unavailable local storage.
@@ -84,6 +92,14 @@ async function analyze() {
   }
 }
 
+function parseNumberList(value, name) {
+  const items = value.split(',').map(item => item.trim()).filter(Boolean).map(Number);
+  if (!items.length || items.some(item => !Number.isFinite(item))) {
+    throw new Error(`${name} 需要逗号分隔的数字`);
+  }
+  return items;
+}
+
 async function generateHeatmap() {
   const code = $('code').value.trim();
   if (!code) {
@@ -95,10 +111,36 @@ async function generateHeatmap() {
   const minfee = Math.max(0, parseFloat($('minfee').value) || 0);
   const metric = $('heatmap-metric').value;
 
+  let gapScales;
+  let stopLosses;
+  let initPositions;
+  try {
+    gapScales = parseNumberList($('heatmap-gap-scales').value, '格距缩放');
+    stopLosses = parseNumberList($('heatmap-stop-losses').value, '破网止损');
+    const initPct = parseNumberList($('heatmap-init-positions').value, '初始底仓');
+    if (gapScales.some(item => item <= 0)) throw new Error('格距缩放必须大于 0');
+    if (stopLosses.some(item => item < 0)) throw new Error('破网止损不能为负');
+    if (initPct.some(item => item < 0 || item > 100)) throw new Error('初始底仓需在 0~100 之间');
+    initPositions = initPct.map(item => item / 100);
+  } catch (e) {
+    $('heatmap-status').textContent = e.message;
+    return;
+  }
+
+  saveInputs();
   $('heatmap-btn').disabled = true;
   $('heatmap-status').textContent = '正在计算参数热力图，请稍候…';
   try {
-    const data = await fetchHeatmap({ code, capital, fee, minfee, metric });
+    const data = await fetchHeatmap({
+      code,
+      capital,
+      fee,
+      minfee,
+      metric,
+      gapScales: gapScales.join(','),
+      stopLosses: stopLosses.join(','),
+      initPositions: initPositions.join(','),
+    });
     renderHeatmap(data, $('heatmap-wrap'));
     $('heatmap-status').textContent = '计算完成';
   } catch (e) {
