@@ -1,0 +1,16 @@
+[Unit]
+Description=A股网格交易参数分析器 (FastAPI)
+After=network.target
+
+[Service]
+Type=simple
+User=grid
+Group=grid
+WorkingDirectory=/path/to/grid
+EnvironmentFile=-/path/to/grid/.env
+ExecStart=/usr/local/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

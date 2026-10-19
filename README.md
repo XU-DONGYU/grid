@@ -92,6 +92,15 @@ make test
 
 优先选择 `plateau_score` 高且相邻参数表现接近的“参数高原”，不要只取单点最高收益。
 
+## 工程流程
+
+- CI：`.github/workflows/ci.yml`，在 Python 3.12/3.13 上执行 ruff、mypy、pytest、隐私扫描和前端语法检查。
+- 本地一键检查：`make ci`。
+- 提交钩子：`.pre-commit-config.yaml`。
+- 架构与方法论：`docs/architecture.md`、`docs/methodology.md`。
+- 架构决策：`docs/adr/`。
+- 部署示例：`deploy/grid.service.example`。
+
 ## 隐私与密钥
 
 提交前必须执行：
@@ -136,16 +145,18 @@ make scan
 │  ├─ scan_secrets.py      # 隐私与密钥扫描
 │  ├─ sweep.py             # 参数扫描 + Walk-forward
 │  └─ walk_forward.py      # 单组参数滚动验证
+├─ deploy/
+│  └─ grid.service.example # systemd 部署模板
 ├─ tests/
 │  ├─ fixtures/            # 离线行情
 │  ├─ unit/                # 纯函数与回测不变量
 │  └─ integration/         # API 特征测试
-└─ docs/                   # 架构与方法论文档（后续补充）
+└─ docs/                   # 架构、方法论与 ADR
 ```
 
 ## 部署
 
-当前使用 systemd 服务 `grid.service`。更新代码后执行：
+当前使用 systemd 服务 `grid.service`。可参考 `deploy/grid.service.example`，把 `/path/to/grid` 替换为实际目录，并建议使用独立运行用户与 `.env` 环境文件。更新代码后执行：
 
 ```bash
 sudo systemctl restart grid.service
