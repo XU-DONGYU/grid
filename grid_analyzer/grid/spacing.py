@@ -12,7 +12,8 @@ def design_grid(lower: float, upper: float, price: float, capital: float,
                 sigma_daily: float, atr_pct: float, spread_pct: float,
                 fee_pct: float, gap_ratio: float, sigma_mult: float,
                 atr_anchor: float, gap_cap: float, min_fee: float = 0.0,
-                gap_scale: float = 1.0) -> dict:
+                gap_scale: float = 1.0,
+                gap_override: float | None = None) -> dict:
     """
     设计一套等比网格。
     gap_ratio: 成本门槛倍数（主1.2 / 辅1.0）
@@ -29,7 +30,10 @@ def design_grid(lower: float, upper: float, price: float, capital: float,
 
     atr_gap = atr_anchor * atr_pct / 100.0
     sigma_gap = sigma_mult * sigma_daily
-    gap = max(gap_ratio * min_gap, atr_gap, sigma_gap) * max(gap_scale, 0.01)
+    if gap_override is not None:
+        gap = max(gap_override, min_gap)
+    else:
+        gap = max(gap_ratio * min_gap, atr_gap, sigma_gap) * max(gap_scale, 0.01)
     gap = min(gap, gap_cap)
     gap = max(gap, min_gap)
     if gap <= 0:
@@ -93,4 +97,5 @@ def design_grid(lower: float, upper: float, price: float, capital: float,
         "min_gap_pct": min_gap * 100,
         "capital_constrained": capital_constrained,
         "gap_scale": gap_scale,
+        "gap_override_pct": gap_override * 100 if gap_override is not None else None,
     }

@@ -41,6 +41,11 @@ def _empty_backtest() -> dict:
         "stop_fill_price": 0.0,
         "init_cost": 0.0,
         "turnover": 0.0,
+        "realized_trades": 0,
+        "win_count": 0,
+        "loss_count": 0,
+        "gross_profit": 0.0,
+        "gross_loss": 0.0,
         "trading_days": 0,
         "equity_curve": [],
     }
@@ -79,6 +84,11 @@ def run_backtest(
     base_lot: dict | None = None
     total_fees = 0.0
     realized_pnl = 0.0
+    realized_trades = 0
+    win_count = 0
+    loss_count = 0
+    gross_profit = 0.0
+    gross_loss = 0.0
     turnover = 0.0
     buy_count = 0
     sell_count = 0
@@ -145,6 +155,7 @@ def run_backtest(
 
     def do_sell(idx: int, fill: float) -> None:
         nonlocal cash, total_fees, turnover, sell_count, rounds, realized_pnl
+        nonlocal realized_trades, win_count, loss_count, gross_profit, gross_loss
         pos = positions.pop(idx)
         amount = fill * pos["shares"]
         fee = commission(amount, fee_pct, min_fee)
@@ -155,10 +166,19 @@ def run_backtest(
         turnover += amount
         sell_count += 1
         rounds += 1
-        realized_pnl += proceeds - (pos["price"] * pos["shares"] + pos["buy_fee"])
+        trade_pnl = proceeds - (pos["price"] * pos["shares"] + pos["buy_fee"])
+        realized_pnl += trade_pnl
+        realized_trades += 1
+        if trade_pnl >= 0:
+            win_count += 1
+            gross_profit += trade_pnl
+        else:
+            loss_count += 1
+            gross_loss += abs(trade_pnl)
 
     def do_sell_base(fill: float) -> None:
         nonlocal cash, total_fees, turnover, sell_count, realized_pnl, base_lot
+        nonlocal realized_trades, win_count, loss_count, gross_profit, gross_loss
         if not base_lot:
             return
         lot = base_lot
@@ -170,7 +190,15 @@ def run_backtest(
         total_fees += fee + stamp
         turnover += amount
         sell_count += 1
-        realized_pnl += proceeds - (lot["price"] * lot["shares"] + lot["buy_fee"])
+        trade_pnl = proceeds - (lot["price"] * lot["shares"] + lot["buy_fee"])
+        realized_pnl += trade_pnl
+        realized_trades += 1
+        if trade_pnl >= 0:
+            win_count += 1
+            gross_profit += trade_pnl
+        else:
+            loss_count += 1
+            gross_loss += abs(trade_pnl)
         base_lot = None
 
     def liquidate(fill: float, current_day: str) -> None:
@@ -355,6 +383,11 @@ def run_backtest(
             "stop_price": stop_price or 0.0,
             "stop_fill_price": stop_fill_price,
             "turnover": turnover,
+            "realized_trades": realized_trades,
+            "win_count": win_count,
+            "loss_count": loss_count,
+            "gross_profit": gross_profit,
+            "gross_loss": gross_loss,
             "trading_days": trading_days,
             "equity_curve": equity_curve,
         }
