@@ -37,6 +37,9 @@ jobs:
       - name: Secret scan
         run: python scripts/scan_secrets.py
 
+      - name: Product docs
+        run: python scripts/check_product_docs.py
+
       - name: Frontend syntax
         run: |
           for file in grid_analyzer/web/static/js/*.js; do

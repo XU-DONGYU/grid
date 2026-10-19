@@ -4,7 +4,7 @@ RUFF ?= .venv/bin/ruff
 MYPY ?= .venv/bin/mypy
 PYTEST ?= .venv/bin/pytest
 
-.PHONY: install dev run test lint format typecheck scan ci
+.PHONY: install dev run test lint format typecheck scan docs ci
 
 install:
 	python3 -m venv .venv || (rm -rf .venv && python3 -m virtualenv .venv)
@@ -32,4 +32,7 @@ typecheck:
 scan:
 	$(PYTHON) scripts/scan_secrets.py
 
-ci: lint typecheck test scan
+docs:
+	$(PYTHON) scripts/check_product_docs.py
+
+ci: lint typecheck test scan docs
