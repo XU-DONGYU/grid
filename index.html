@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A股网格交易参数分析器</title>
+<style>
+  :root{
+    --blue:#1a56db; --blue-light:#e8effc; --blue-dark:#0f3a9e;
+    --red:#d93026; --green:#0a8a4a;
+    --text:#1f2733; --text2:#5b6472; --text3:#8b93a1;
+    --bg:#f4f6fa; --card:#ffffff; --line:#e6eaf1;
+    --orange:#c2700c; --orange-light:#fdf3e3;
+    --warn-bg:#fff7e8; --warn-border:#f0c36d;
+    --good:#0a8a4a; --mid:#c2700c; --bad:#d93026;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+  .wrap{max-width:1080px;margin:0 auto;padding:16px}
+  header{background:linear-gradient(135deg,#0f3a9e 0%,#1a56db 60%,#2f6fe0 100%);color:#fff;padding:28px 16px 22px;margin-bottom:16px}
+  header .inner{max-width:1080px;margin:0 auto}
+  header h1{font-size:24px;font-weight:700;letter-spacing:.5px}
+  header p{font-size:13px;opacity:.85;margin-top:6px}
+  .panel{background:var(--card);border-radius:14px;padding:18px;margin-bottom:14px;box-shadow:0 1px 3px rgba(16,35,72,.06);scroll-margin-top:70px}
+  /* ---- 目录导航 ---- */
+  html{scroll-behavior:smooth}
+  #toc{display:flex;gap:4px;overflow-x:auto;position:sticky;top:8px;z-index:60;background:rgba(255,255,255,.96);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin-bottom:14px;box-shadow:0 2px 8px rgba(16,35,72,.08);-webkit-overflow-scrolling:touch}
+  #toc a{flex:0 0 auto;padding:4px 12px;font-size:12px;color:var(--text2);text-decoration:none;border-radius:16px;white-space:nowrap;transition:background .15s,color .15s}
+  #toc a:hover{background:var(--blue-light);color:var(--blue)}
+  #toc a.active{background:var(--blue);color:#fff}
+  @media(min-width:1300px){
+    #toc{position:fixed;right:16px;top:50%;transform:translateY(-50%);flex-direction:column;width:148px;max-height:78vh;overflow-y:auto;padding:10px;margin-bottom:0}
+    #toc a{width:100%;padding:5px 10px;font-size:12px;border-radius:6px;text-align:left}
+  }
+  .search-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:12px;color:var(--text2)}
+  .field input{border:1.5px solid var(--line);border-radius:9px;padding:9px 12px;font-size:15px;width:100%;outline:none;transition:border .15s}
+  .field input:focus{border-color:var(--blue)}
+  #code{width:180px} #capital{width:150px} #fee{width:110px} #ratio{width:110px}
+  #minfee{width:110px} #initpos{width:110px} #stoploss{width:110px}
+  button#btn{background:var(--blue);color:#fff;border:none;border-radius:9px;padding:11px 30px;font-size:15px;font-weight:600;cursor:pointer;transition:background .15s}
+  button#btn:hover{background:var(--blue-dark)}
+  button#btn:disabled{background:#9db4e6;cursor:not-allowed}
+  .field input:disabled{background:#f0f2f5;color:var(--text3)}
+  .check-field{flex-direction:row;align-items:center;gap:6px;padding-bottom:10px;cursor:pointer;user-select:none}
+  .check-field input{width:16px;height:16px;accent-color:var(--blue);cursor:pointer}
+  .check-field span{font-size:13px;color:var(--text2)}
+  .hint{font-size:12px;color:var(--text3);margin-top:8px}
+  .err{background:#fdecea;border:1px solid #f2b8b5;color:#8c1d18;border-radius:9px;padding:10px 14px;font-size:13px;margin-top:12px;display:none}
+  .loading{display:none;text-align:center;padding:30px;color:var(--text2);font-size:14px}
+  .loading .spin{display:inline-block;width:22px;height:22px;border:3px solid var(--blue-light);border-top-color:var(--blue);border-radius:50%;animation:rot .8s linear infinite;margin-right:8px;vertical-align:-6px}
+  @keyframes rot{to{transform:rotate(360deg)}}
+  #result{display:none}
+  .card-title{font-size:16px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .card-title .bar{width:4px;height:16px;background:var(--blue);border-radius:2px;display:inline-block}
+  .stock-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .stock-head .name{font-size:22px;font-weight:700}
+  .stock-head .code{font-size:13px;color:var(--text3)}
+  .stock-head .price{font-size:26px;font-weight:700}
+  .up{color:var(--red)} .down{color:var(--green)}
+  .kv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:12px}
+  .kv{background:#f8fafd;border-radius:9px;padding:9px 12px}
+  .kv .k{font-size:12px;color:var(--text3)}
+  .kv .k[title]{cursor:help;border-bottom:1px dashed #c3ccda}
+  .kv .v{font-size:15px;font-weight:600;margin-top:2px}
+  .badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600}
+  .badge.good{background:#e6f4ec;color:var(--good)}
+  .badge.mid{background:var(--orange-light);color:var(--mid)}
+  .badge.bad{background:#fdecea;color:var(--bad)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .sub-card{border:1.5px solid var(--line);border-radius:11px;padding:14px}
+  .sub-card.main{border-color:#bcd0f5;background:linear-gradient(180deg,#f6f9ff, #fff)}
+  .sub-card.aux{border-color:#eed9b0;background:linear-gradient(180deg,#fffaf0,#fff)}
+  .sub-card h3{font-size:14px;font-weight:700;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+  .sub-card h3 .role{font-size:11px;font-weight:500;padding:2px 8px;border-radius:10px}
+  .main h3 .role{background:var(--blue-light);color:var(--blue-dark)}
+  .aux h3 .role{background:var(--orange-light);color:var(--orange)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{font-size:12px;color:var(--text2);text-align:left;font-weight:500;padding:6px 8px;border-bottom:1px solid var(--line)}
+  td{padding:6px 8px;border-bottom:1px solid #f0f3f8}
+  tr.now td{background:#fff4e5;font-weight:600}
+  .num{font-variant-numeric:tabular-nums;text-align:right}
+  .chart-box{width:100%;overflow-x:auto}
+  .layer-toggle{display:flex;gap:6px;margin-left:auto}
+  .layer-btn{border:1.5px solid var(--line);background:#fff;color:var(--text2);border-radius:14px;padding:3px 12px;font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
+  .layer-btn.on-main{border-color:#bcd0f5;background:var(--blue-light);color:var(--blue-dark)}
+  .layer-btn.on-aux{border-color:#eed9b0;background:var(--orange-light);color:var(--orange)}
+  .layer-btn.off{opacity:.5;background:#f5f7fa}
+  .layer-btn:disabled{opacity:.35;cursor:not-allowed}
+  svg{display:block;width:100%;height:auto;min-width:640px}
+  .score-wrap{display:flex;align-items:center;gap:10px}
+  .score-bar{flex:1;height:10px;border-radius:5px;background:#edf0f5;overflow:hidden}
+  .score-bar i{display:block;height:100%;border-radius:5px;transition:width .6s}
+  .score-num{font-size:20px;font-weight:700;min-width:44px;text-align:right}
+  .risk-item{background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:9px;padding:9px 12px;font-size:13px;margin-bottom:8px}
+  .risk-none{color:var(--good);font-size:13px;background:#e6f4ec;border-radius:9px;padding:9px 12px}
+  .note{font-size:12px;color:var(--text3);margin-top:10px}
+  .axis-row{display:flex;justify-content:space-between;padding:7px 10px;border-radius:8px;font-size:13px;margin-bottom:6px;background:#f8fafd}
+  .axis-row span[title]{cursor:help;border-bottom:1px dashed #c3ccda}
+  .axis-row.reco{background:var(--blue-light);font-weight:600}
+  footer{padding:22px 16px 30px;text-align:center;font-size:12px;color:var(--text3)}
+  .disclaim{background:#eef1f6;border-radius:10px;padding:12px 16px;font-size:12px;color:var(--text2);margin-top:6px}
+  .bt-table td{font-variant-numeric:tabular-nums}
+  #bt-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #bt-wrap table{min-width:980px}
+  .pos-hl{background:#e8f0fe}
+  .equity-box{margin-top:14px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fbfcfe;overflow-x:auto}
+  .equity-head{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px;color:var(--text2);margin-bottom:6px;flex-wrap:wrap}
+  .equity-legend{display:flex;gap:14px;flex-wrap:wrap}
+  .equity-legend i{display:inline-block;width:16px;height:3px;border-radius:2px;vertical-align:2px;margin-right:5px}
+  .bt-tag{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600}
+  .bt-tag.ok{background:#e6f4ec;color:var(--good)}
+  .bt-tag.stop{background:#fdecea;color:var(--bad)}
+  .bt-tag.idle{background:#eef1f6;color:var(--text2)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <h1>📉 A股网格交易参数分析器</h1>
+    <p>输入股票代码，自动分析中轴 / 波动率 / 网格区间 / 网格密度 / 资金分配，并按 T+1、现金约束与破网止损回测近120个交易日</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <nav id="toc">
+    <a href="#p-stock">股票概览</a>
+    <a href="#p-axis">中轴/波动率</a>
+    <a href="#p-grid">网格参数</a>
+    <a href="#p-chart">价格走势</a>
+    <a href="#p-bt">历史回测</a>
+    <a href="#p-risk">风险提示</a>
+  </nav>
+
+  <div class="panel">
+    <div class="search-row">
+      <div class="field"><label>股票代码</label><input id="code" placeholder="如 600000 / 000001 / 300750" maxlength="8"></div>
+      <div class="field"><label>总资金（元）</label><input id="capital" type="number" value="100000" min="1000" step="1000"></div>
+      <div class="field"><label>单边佣金 %</label><input id="fee" type="number" value="0.025" min="0" max="0.3" step="0.005"></div>
+      <div class="field"><label>最低佣金（元）</label><input id="minfee" type="number" value="5" min="0" max="100" step="1"></div>
+      <label class="field check-field" title="勾选后全部资金只跑主网格，不设辅助网格"><input type="checkbox" id="single"><span>仅主网格</span></label>
+      <div class="field"><label>主网格资金占比</label><input id="ratio" type="number" value="0.7" min="0.5" max="1.0" step="0.05"></div>
+      <div class="field"><label>初始底仓 %</label><input id="initpos" type="number" value="0" min="0" max="100" step="5" title="0 表示中性零底仓启动；大于0时按回测首日开盘价真实扣款建仓"></div>
+      <div class="field"><label>破网止损 %</label><input id="stoploss" type="number" value="5" min="0" max="50" step="1" title="价格跌破网格下限该比例后清仓并停止交易；0 表示关闭"></div>
+      <button id="btn">开始分析</button>
+    </div>
+    <div class="hint">数据来源：腾讯财经实时行情 + 前复权日K线（指标取约250日，图表/回测取最近120日） · 间距同时锚定 ATR、日波动率与「价差+往返成本」，默认零底仓启动</div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="panel loading" id="loading"><span class="spin"></span>正在获取行情并计算网格参数…</div>
+
+  <div id="result">
+
+    <div class="panel" id="p-stock">
+      <div class="card-title"><span class="bar"></span>股票概览</div>
+      <div class="stock-head">
+        <span class="name" id="s-name"></span>
+        <span class="code" id="s-code"></span>
+        <span class="price" id="s-price"></span>
+        <span id="s-change"></span>
+        <span id="s-liq"></span>
+      </div>
+      <div class="kv-grid" id="s-kv"></div>
+    </div>
+
+    <div class="panel" id="p-axis">
+      <div class="card-title"><span class="bar"></span>中轴 / 波动率 / 趋势判定</div>
+      <div class="grid2">
+        <div>
+          <h3 style="font-size:13px;margin-bottom:8px;color:var(--text2)">中轴三种算法</h3>
+          <div id="axis-rows"></div>
+          <div class="note">推荐使用「60日中位数」：抗单日暴涨暴跌，最稳健。中轴是动态锚点，建议每月校准一次。</div>
+        </div>
+        <div>
+          <h3 style="font-size:13px;margin-bottom:8px;color:var(--text2)">波动率与趋势</h3>
+          <div class="kv-grid" id="vol-kv" style="grid-template-columns:1fr 1fr"></div>
+          <div style="margin-top:12px">
+            <div style="font-size:12px;color:var(--text2);margin-bottom:6px">网格适配度评分：<span id="fit-label"></span></div>
+            <div class="score-wrap"><div class="score-bar"><i id="fit-bar"></i></div><span class="score-num" id="fit-num"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="p-grid">
+      <div class="card-title"><span class="bar"></span>网格参数建议（主网格 + 辅助网格）</div>
+      <div class="grid2">
+        <div class="sub-card main">
+          <h3>主网格（赚大波段）<span class="role">核心收益</span></h3>
+          <div id="grid-main"></div>
+        </div>
+        <div class="sub-card aux">
+          <h3>辅助网格（扫碎银子）<span class="role">降本 + 防踏空</span></h3>
+          <div id="grid-aux"></div>
+        </div>
+      </div>
+      <div class="note" id="grid-note"></div>
+    </div>
+
+    <div class="panel" id="p-chart">
+      <div class="card-title"><span class="bar"></span>价格走势与网格区间（近120个交易日）
+        <span class="layer-toggle">
+          <button id="layer-main" class="layer-btn on-main" onclick="toggleLayer('main')" title="显示/隐藏主网格图层（色带 + 档位虚线 + 价格标签）">主网格</button>
+          <button id="layer-aux" class="layer-btn on-aux" onclick="toggleLayer('aux')" title="显示/隐藏辅助网格图层（色带 + 档位虚线 + 价格标签）">辅助网格</button>
+        </span>
+      </div>
+      <div class="chart-box" id="chart"></div>
+      <div class="note" id="chart-note"></div>
+    </div>
+
+    <div class="panel" id="p-bt">
+      <div class="card-title"><span class="bar"></span>历史回测（近120个交易日）</div>
+      <div id="bt-wrap"></div>
+      <div id="equity-chart"></div>
+      <div class="note" id="bt-note"></div>
+      <div class="note">回测假设：事件驱动 + T+1；当日买入不可当日卖出；买入受可用现金约束；跳空按前收盘→开盘→日内高低→收盘路径估算；费用含双边佣金（含最低佣金）与印花税（卖出0.05%）；初始底仓按首日开盘价真实扣款（默认0，即中性零底仓）；跌破网格下限指定比例后清仓并停止交易。历史表现不代表未来收益。</div>
+    </div>
+
+    <div class="panel" id="p-risk">
+      <div class="card-title"><span class="bar"></span>风险提示</div>
+      <div id="risks"></div>
+      <div class="disclaim">⚠️ 本工具仅为参数计算参考，不构成投资建议。网格交易在单边下跌行情中会持续买入导致仓位加重、浮亏扩大；单边上涨行情会提前卖光而踏空。请结合自身风险承受能力决策，A股实行 T+1 且委托单当日有效。</div>
+    </div>
+
+  </div>
+</div>
+
+<footer>A股网格交易参数分析器 <span id="ver"></span> · 数据来源：腾讯财经 · 仅供参考，不构成投资建议</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = (n, d=2) => {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return '—';
+  return x.toLocaleString('zh-CN', {minimumFractionDigits:d, maximumFractionDigits:d});
+};
+const pctOrDash = (n, d=1) => Number.isFinite(Number(n)) ? fmt(n, d)+'%' : '—';
+const fmtWan = n => {
+  const sign = n < 0 ? '-' : '';
+  const a = Math.abs(n);
+  return a >= 1e8 ? sign+(a/1e8).toFixed(2)+' 亿' : a >= 1e4 ? sign+(a/1e4).toFixed(2)+' 万' : sign+fmt(a,0);
+};
+const pctCls = v => v > 0 ? 'up' : v < 0 ? 'down' : '';
+const LS_KEY = 'grid_analyzer_input';
+
+function saveInputs(){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      code: $('code').value, capital: $('capital').value, fee: $('fee').value,
+      minfee: $('minfee').value, ratio: $('ratio').value, single: $('single').checked,
+      initpos: $('initpos').value, stoploss: $('stoploss').value
+    }));
+  }catch(e){ /* 隐私模式等禁用 localStorage 时忽略 */ }
+}
+function syncSingleUI(){
+  $('ratio').disabled = $('single').checked;
+}
+function restoreInputs(){
+  try{
+    const s = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+    if(!s) return;
+    if(s.code) $('code').value = s.code;
+    if(s.capital) $('capital').value = s.capital;
+    if(s.fee !== undefined && s.fee !== '') $('fee').value = s.fee;
+    if(s.minfee !== undefined && s.minfee !== '') $('minfee').value = s.minfee;
+    if(s.ratio) $('ratio').value = s.ratio;
+    if(s.single) $('single').checked = s.single;
+    if(s.initpos !== undefined && s.initpos !== '') $('initpos').value = s.initpos;
+    if(s.stoploss !== undefined && s.stoploss !== '') $('stoploss').value = s.stoploss;
+    syncSingleUI();
+  }catch(e){}
+}
+
+function showError(msg){ $('err').textContent = msg; $('err').style.display='block'; $('loading').style.display='none'; }
+async function analyze(){
+  const code = $('code').value.trim();
+  if(!code){ showError('请输入股票代码'); return; }
+  const capital = parseFloat($('capital').value) || 100000;
+  const fee = parseFloat($('fee').value);
+  const minfee = Math.max(0, parseFloat($('minfee').value) || 0);
+  const single = $('single').checked;
+  const ratio = single ? 1.0 : (parseFloat($('ratio').value) || 0.7);
+  const initpos = Math.min(100, Math.max(0, parseFloat($('initpos').value) || 0)) / 100;
+  const stoploss = Math.min(50, Math.max(0, parseFloat($('stoploss').value) || 0));
+  saveInputs();
+  $('err').style.display='none'; $('result').style.display='none'; $('loading').style.display='block';
+  $('btn').disabled = true;
+  try{
+    const res = await fetch(`/api/analyze?code=${encodeURIComponent(code)}&capital=${capital}&fee=${fee}&min_fee=${minfee}&main_ratio=${ratio}&init_position=${initpos}&stop_loss=${stoploss}`);
+    const json = await res.json();
+    if(!res.ok || !json.ok){
+      let detail = json.detail;
+      if(Array.isArray(detail)) detail = detail.map(x => x.msg).join('；');
+      if(typeof detail !== 'string') detail = String(detail || '分析失败，请稍后重试');
+      throw new Error(detail);
+    }
+    render(json.data);
+    $('result').style.display='block';
+  }catch(e){
+    showError(e.message);
+  }finally{
+    $('loading').style.display='none'; $('btn').disabled=false;
+  }
+}
+$('btn').onclick = analyze;
+$('code').addEventListener('keydown', e => { if(e.key==='Enter') analyze(); });
+$('single').addEventListener('change', syncSingleUI);
+
+function kv(k, v, cls='', tip=''){ return `<div class="kv"><div class="k"${tip?` title="${tip}"`:''}>${k}</div><div class="v ${cls}">${v}</div></div>`; }
+
+function render(d){
+  const q = d.quote;
+  const single = d.params.single_grid;   // 仅主网格模式
+  $('ver').textContent = d.version ? '· 后端 v'+d.version : '· 后端版本未返回（可能仍是旧进程，请重启 uvicorn）';
+  // ---- 股票概览 ----
+  $('s-name').textContent = q.name;
+  $('s-code').textContent = q.market_code.toUpperCase() + ' · ' + q.code + (q.pe_ttm ? ' · PE ' + fmt(q.pe_ttm,1) : '');
+  $('s-price').textContent = fmt(q.price);
+  $('s-price').className = 'price ' + (q.change>=0?'up':'down');
+  $('s-change').innerHTML = `<span class="${pctCls(q.change)}">${q.change>=0?'+':''}${fmt(q.change)}（${q.change>=0?'+':''}${fmt(q.change_pct)}%）</span>`;
+  const lg = d.liquidity.grade;
+  $('s-liq').innerHTML = `流动性 <span class="badge ${lg==='好'?'good':lg==='中'?'mid':'bad'}">${lg}</span>`;
+  $('s-kv').innerHTML =
+    kv('成交额', fmtWan(q.amount_wan*1e4)) +
+    kv('换手率', fmt(q.turnover_pct)+'%') +
+    kv('今日振幅', fmt(q.amplitude_pct)+'%') +
+    kv('今日最高/最低', fmt(q.high)+' / '+fmt(q.low)) +
+    kv('52周最高/最低', fmt(q.high_52w)+' / '+fmt(q.low_52w)) +
+    kv('总市值', (Number(q.total_mv) > 0) ? fmt(q.total_mv,0)+' 亿' : '—') +
+    kv('买卖价差', fmt(d.liquidity.spread_pct,3)+'%') +
+    kv('五档买盘承接', fmtWan(d.liquidity.bid_depth_yuan));
+
+  // ---- 图表 ----
+  drawChart(d);
+  syncLayerUI();
+  const kd = d.kline_tail;
+  $('chart-note').innerHTML =
+    `<b>数据区间：${kd[0].date} ~ ${kd[kd.length-1].date}</b>（近 ${kd.length} 个交易日，已更新至最新收盘）。` +
+    `蓝色带 = 主网格区间${single ? '' : '，橙色带 = 辅助网格区间（含于主区间内）'}；` +
+    `蓝色横虚线 + 右侧<b style="color:#4a6fb5">蓝色价格</b> = 主网格档位挂单价，` +
+    `${single ? '' : '橙色横虚线 + 右侧<b style="color:#c2700c">橙色价格</b> = 辅助网格档位挂单价，'}红色横虚线 = 推荐中轴（60日收盘中位数），● = 当前价`;
+
+  // ---- 网格参数 ----
+  const g1 = d.main_grid, g2 = d.aux_grid, capital_total = d.params.capital;
+  $('grid-main').innerHTML =
+    kv('网格区间', `${fmt(g1.lower)} ~ ${fmt(g1.upper)} 元`) +
+    kv('区间宽度', fmt((g1.upper/g1.lower-1)*100,1)+'%') +
+    kv('网格间距', fmt(g1.gap_pct)+'%') +
+    kv('ATR锚定', fmt(g1.atr_gap_pct)+'%', '', '0.70 × ATR14%，掐去头尾极值，锚定最常出现的波幅躯干') +
+    kv('档位数量', (g1.levels.length-1)+' 档（可买）') +
+    kv('分配资金', fmtWan(g1.capital)) +
+    kv('每格股数', fmt(g1.shares_per_grid,0)+' 股') +
+    kv('每格金额', fmtWan(g1.grid_cost)) +
+    kv('最低间距门槛', fmt(g1.min_gap_pct)+'%', '');
+  $('grid-aux').innerHTML = single
+    ? `<div class="note" style="background:var(--orange-light);border-radius:9px;padding:10px 12px;margin:0">
+         未启用 —— 仅主网格模式：全部资金 <b>${fmtWan(capital_total)}</b> 已分配给主网格，不再设置辅助网格。</div>`
+    : (g2.shares_per_grid > 0 ?
+    kv('网格区间', `${fmt(g2.lower)} ~ ${fmt(g2.upper)} 元`) +
+    kv('区间宽度', fmt((g2.upper/g2.lower-1)*100,1)+'%') +
+    kv('网格间距', fmt(g2.gap_pct)+'%') +
+    kv('ATR锚定', fmt(g2.atr_gap_pct)+'%', '', '0.55 × ATR14%，辅助网格更关注碎波段的换手') +
+    kv('档位数量', (g2.levels.length-1)+' 档（可买）') +
+    kv('分配资金', fmtWan(g2.capital)) +
+    kv('每格股数', fmt(g2.shares_per_grid,0)+' 股') +
+    kv('每格金额', fmtWan(g2.grid_cost))
+    : `<div class="risk-item">辅助网格每格资金不足一手（100股），建议只跑主网格或增加资金</div>`);
+  const constrainedNote = (g1.capital_constrained || (!single && g2.capital_constrained))
+    ? ' <b style="color:var(--mid)">资金约束：</b>为保证每格至少成交一手，系统已自动拉宽间距。'
+    : '';
+  $('grid-note').innerHTML = (single
+    ? `费用规则：佣金双边各收 ${fmt(d.params.fee_pct)}%（单笔最低 ${fmt(d.params.min_fee,0)} 元），卖出另收印花税 0.05%。主网格每格金额 ${fmtWan(g1.grid_cost)}，最低间距门槛 <b>${fmt(g1.min_gap_pct)}%</b>（价差 ${fmt(d.liquidity.spread_pct,3)}% + 往返成本 + 0.15% 缓冲）。主网格间距 = max(1.2×门槛, 0.70×ATR%, 1.0×日σ)，采用等比档位。每格股数按100股取整，最高档不买入（防踏空保护）。`
+    : `费用规则：佣金双边各收 ${fmt(d.params.fee_pct)}%（单笔最低 ${fmt(d.params.min_fee,0)} 元），卖出另收印花税 0.05%。主网格最低间距门槛 <b>${fmt(g1.min_gap_pct)}%</b>，辅助网格最低间距门槛 <b>${fmt(g2.min_gap_pct)}%</b>。主网格间距 = max(1.2×门槛, 0.70×ATR%, 1.0×日σ)；辅助网格间距 = max(1×门槛, 0.55×ATR%, 0.7×日σ)，均为等比档位。每格股数按100股取整，最高档不买入（防踏空保护）。`
+  ) + constrainedNote;
+
+  // ---- 中轴 ----
+  const a = d.axis;
+  $('axis-rows').innerHTML =
+    `<div class="axis-row reco"><span title="近60个交易日收盘价排序取中间值，不受单日暴涨暴跌影响，最稳健。网格以它为中心上下对称展开">60日收盘中位数（推荐）</span><b>${fmt(a.median60)}</b></div>` +
+    `<div class="axis-row"><span title="近60个交易日收盘价的算术平均，受极端涨跌影响比中位数大，可作中轴备选">60日收盘均值</span><b>${fmt(a.mean60)}</b></div>` +
+    `<div class="axis-row"><span title="20日均线（近20日收盘均值），短中期价格重心，与布林带中轨重合">MA20（布林中轨）</span><b>${fmt(a.ma20)}</b></div>` +
+    `<div class="axis-row"><span title="60日均线（近60日收盘均值），中期趋势分水岭，价格在其上方偏多、下方偏空">MA60</span><b>${fmt(a.ma60)}</b></div>` +
+    `<div class="axis-row"><span title="现价 ÷ 60日中位数 − 1。正值说明现价高于网格中枢（当前偏上沿），负值偏低">当前价相对推荐中轴</span><b class="${q.price>a.median60?'up':'down'}">${q.price>a.median60?'偏高':'偏低'} ${fmt(Math.abs(q.price/a.median60-1)*100,1)}%</b></div>`;
+
+  // ---- 波动率 ----
+  const v = d.volatility, t = d.trend;
+  const squeezeTag = v.squeeze ? '<span class="badge bad">挤压禁区</span>' : '<span class="badge good">未挤压</span>';
+  $('vol-kv').innerHTML =
+    kv('日波动率 σ', fmt(v.sigma_daily_pct)+'%', '', '近120个交易日每日涨跌幅的标准差，衡量单日波动幅度。σ 越大，网格间距建议越大') +
+    kv('年化波动率', fmt(v.sigma_annual_pct,1)+'%', '', '日波动率 × √243（年化交易日数）折算到一年，反映整体风险水平，与同类标的可比') +
+    kv('波动率方差', pctOrDash(v.vol_of_vol_pct,1), '', '滚动20日日波动率的标准差（年化），衡量波动率自身的离散程度。过高说明市场状态易突变') +
+    kv('ATR(14)', fmt(v.atr)+'（'+fmt(v.atr_pct)+'%）', '', '14日平均真实波幅，含跳空缺口，比标准差更贴近实际盘面跳动。ATR 越大，每格价差应越大') +
+    kv('布林带宽(20日)', fmt(v.boll_width_pct,2)+'%', '', '(上轨−下轨) ÷ 中轨 = 4×变异系数，衡量近20日价格波动收窄还是放大') +
+    kv('带宽历史分位', pctOrDash(v.boll_width_percentile,0), '', '当前布林带宽在可用历史带宽中的分位。≤10% 视为极度挤压，是网格禁区') +
+    kv('挤压判定', squeezeTag + (v.ttm_squeeze ? ' TTM' : ''), '', 'TTM Squeeze：布林带上下轨完全收缩进肯特纳通道内部，常预示变盘突破') +
+    kv('20日趋势', (t.trend20_pct>0?'+':'')+fmt(t.trend20_pct,1)+'%', pctCls(t.trend20_pct), '近20日收盘累计涨跌幅。正值=短期上行，负值=短期下行') +
+    kv('60日趋势', (t.trend60_pct>0?'+':'')+fmt(t.trend60_pct,1)+'%', pctCls(t.trend60_pct), '近60日收盘累计涨跌幅。正值=中期上行，负值=中期下行') +
+    kv('布林%B位置', fmt(t.pct_b*100,0)+'%', '', '(现价−下轨) ÷ (上轨−下轨)。0≈贴下轨，1≈贴上轨；>1 超涨，<0 超跌') +
+    kv('行情形态', t.regime, '', '由趋势、波动率与挤压状态综合判定：单边趋势、波动挤压均不适合开网格');
+  const fit = t.fit_score;
+  const fitColor = fit>=75?'var(--good)':fit>=50?'var(--mid)':'var(--bad)';
+  const fitText = fit>=75?'适合网格':fit>=50?'尚可，注意仓位':'不适合，建议观望';
+  $('fit-bar').style.width = fit+'%'; $('fit-bar').style.background = fitColor;
+  $('fit-num').textContent = fit; $('fit-num').style.color = fitColor;
+  $('fit-label').textContent = fitText;
+
+  // ---- 回测 ----
+  const b = d.backtest, bm = d.backtest_meta || {};
+  const validBt = bt => !!(bt && bt.equity_curve && bt.equity_curve.length);
+  const row = (name, bt) => validBt(bt) ? `<tr>
+      <td>${name}</td>
+      <td class="num">${bt.rounds}</td>
+      <td class="num">${bt.buy_count} / ${bt.sell_count}</td>
+      <td class="num ${bt.net_profit>=0?'up':'down'}">${bt.net_profit>=0?'+':''}${fmtWan(bt.net_profit)}</td>
+      <td class="num ${bt.return_pct>=0?'up':'down'}">${bt.return_pct>=0?'+':''}${fmt(bt.return_pct)}%</td>
+      <td class="num ${bt.annual_pct>=0?'up':'down'}">${bt.annual_pct>=0?'+':''}${fmt(bt.annual_pct,1)}%</td>
+      <td class="num">${fmt(bt.max_drawdown_pct)}%</td>
+      <td class="num">${bt.max_holding_cnt}</td>
+      <td class="num">${fmtWan(bt.max_position_cost)}</td>
+      <td class="num">${fmtWan(bt.end_holding_value)}</td>
+      <td class="num ${bt.min_float_pnl>=0?'':'down'}">${fmtWan(bt.min_float_pnl)}</td>
+      <td>${bt.stop_triggered
+        ? `<span class="bt-tag stop" title="止损价 ${fmt(bt.stop_price)}，成交价 ${fmt(bt.stop_fill_price)}">${bt.stop_date || '已止损'}</span>`
+        : '<span class="bt-tag idle">未触发</span>'}</td></tr>`
+    : `<tr><td>${name}</td><td colspan="11" style="color:var(--text3)">历史校准参数下资金不足或未产生有效回测</td></tr>`;
+  $('bt-wrap').innerHTML = `<table class="bt-table">
+    <tr><th>网格</th><th class="num">完整回合</th><th class="num">买入/卖出</th><th class="num">净利(含费)</th><th class="num">收益率</th><th class="num">年化预估</th><th class="num">最大回撤</th><th class="num">最大持仓格</th><th class="num">最大持仓成本</th><th class="num">期末持仓市值</th><th class="num">最深持仓浮亏</th><th>破网止损</th></tr>
+    ${row('主网格（历史校准）', b.main)}${single ? '<tr><td>辅助网格</td><td colspan="11" style="color:var(--text3)">未启用（仅主网格模式）</td></tr>' : row('辅助网格（历史校准）', b.aux)}</table>`;
+  const meta = bt => validBt(bt) ? `总费用 <b>${fmtWan(bt.total_fees)}</b> · 已实现 <b class="${bt.realized_pnl>=0?'up':'down'}">${fmtWan(bt.realized_pnl)}</b> · 未实现 <b class="${bt.unrealized_pnl>=0?'up':'down'}">${fmtWan(bt.unrealized_pnl)}</b> · 换手 <b>${fmtWan(bt.turnover)}</b> · 跳过买单 <b>${bt.skipped_buys}</b>` : '未产生有效回测';
+  const calibNote = bm.used_calibration
+    ? `回测参数：以 ${bm.start_date} 前 <b>${bm.calibration_days}</b> 日数据校准（无未来函数），主网格区间 <b>${fmt(bm.main_lower)} ~ ${fmt(bm.main_upper)}</b>，间距 <b>${fmt(bm.main_gap_pct)}%</b>，每格 <b>${fmt(bm.main_shares_per_grid,0)}</b> 股。当前推荐参数基于最新数据，与回测参数可能不同。`
+    : `回测参数：历史校准数据不足，暂用当前参数回测（存在未来函数风险）。`;
+  $('bt-note').innerHTML = calibNote + `<br>主网格：${meta(b.main)}` + (single ? '' : `<br>辅助网格：${meta(b.aux)}`);
+  drawEquityChart(d);
+
+  // ---- 风险 ----
+  $('risks').innerHTML = d.risks.length
+    ? d.risks.map(r => `<div class="risk-item">⚠️ ${r}</div>`).join('')
+    : '<div class="risk-none">✅ 未检测到明显风险信号（基于近120日数据）</div>';
+}
+
+// ---- 价格走势图：主/辅网格图层开关 ----
+// 底图（120日走势线 / 中轴 / 坐标轴 / 现价）始终绘制；主网格与辅助网格各自是独立图层，可点击开关显隐
+const layerState = { main: true, aux: true };
+let _chartData = null;   // 缓存最近一次绘图数据，切换图层时直接重绘，无需重新请求
+function toggleLayer(key){
+  layerState[key] = !layerState[key];
+  syncLayerUI();
+  if(_chartData) drawChart(_chartData);
+}
+function syncLayerUI(){
+  const bm = document.getElementById('layer-main');
+  const ba = document.getElementById('layer-aux');
+  if(!bm || !ba) return;
+  const single = _chartData ? _chartData.params.single_grid : false;
+  bm.classList.toggle('on-main', layerState.main);
+  bm.classList.toggle('off', !layerState.main);
+  ba.classList.toggle('on-aux', layerState.aux);
+  ba.classList.toggle('off', !layerState.aux);
+  ba.disabled = !!single;
+  ba.style.display = single ? 'none' : '';
+}
+
+function drawEquityChart(d){
+  const b = d.backtest, single = d.params.single_grid;
+  const series = [];
+  if(b.main && b.main.equity_curve && b.main.equity_curve.length){
+    series.push({name:'主网格', color:'#1a56db', bt:b.main});
+  }
+  if(!single && b.aux && b.aux.equity_curve && b.aux.equity_curve.length){
+    series.push({name:'辅助网格', color:'#c2700c', bt:b.aux});
+  }
+  if(!series.length){ $('equity-chart').innerHTML = ''; return; }
+  const W=860, H=230, L=58, R=62, T=20, B=28;
+  const iw=W-L-R, ih=H-T-B;
+  const n = Math.max(...series.map(s=>s.bt.equity_curve.length));
+  const capOf = s => d.params.capital * (s.name==='主网格' ? (single ? 1 : d.params.main_ratio) : (1 - d.params.main_ratio));
+  const pctOf = (s,i) => {
+    const pt = s.bt.equity_curve[Math.min(i, s.bt.equity_curve.length-1)];
+    const capital = capOf(s);
+    return capital ? (pt.equity/capital - 1)*100 : 0;
+  };
+  let lo=0, hi=0;
+  series.forEach(s=>{
+    s.bt.equity_curve.forEach((_,i)=>{ const v=pctOf(s,i); lo=Math.min(lo,v); hi=Math.max(hi,v); });
+  });
+  const range = Math.max(hi-lo, 0.5); lo-=range*0.12; hi+=range*0.12;
+  const X = i => L + iw * (n<=1?0:i/(n-1));
+  const Y = v => T + ih * (1 - (v-lo)/(hi-lo));
+  const lineFor = s => s.bt.equity_curve.map((_,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(pctOf(s,i)).toFixed(1)}`).join(' ');
+  let yTicks='';
+  for(let i=0;i<=4;i++){
+    const v = lo + (hi-lo)*i/4, y=Y(v);
+    yTicks += `<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#eef1f6"/>
+      <text x="${L-7}" y="${y+3.5}" font-size="10" fill="#8b93a1" text-anchor="end">${v>=0?'+':''}${fmt(v,1)}%</text>`;
+  }
+  const zeroY = Y(0);
+  const dates = series[0].bt.equity_curve.map(x=>x.date);
+  let xTicks='';
+  [0,Math.floor((n-1)/2),n-1].filter((v,i,a)=>a.indexOf(v)===i).forEach(i=>{
+    const anchor = i===n-1?'end':i===0?'start':'middle';
+    xTicks += `<text x="${X(i)}" y="${H-9}" font-size="10" fill="#8b93a1" text-anchor="${anchor}">${(dates[i]||'').slice(2,7)}</text>`;
+  });
+  let stopLines='';
+  series.forEach(s=>{
+    if(s.bt.stop_triggered && s.bt.stop_date){
+      const idx = dates.indexOf(s.bt.stop_date);
+      if(idx>=0) stopLines += `<line x1="${X(idx)}" x2="${X(idx)}" y1="${T}" y2="${T+ih}" stroke="#d93026" stroke-width="1" stroke-dasharray="4 4" opacity=".55"/>`;
+    }
+  });
+  const paths = series.map(s=>`<path d="${lineFor(s)}" fill="none" stroke="${s.color}" stroke-width="1.8"/>`).join('');
+  const ends = series.map(s=>{
+    const i=s.bt.equity_curve.length-1, v=pctOf(s,i);
+    return `<text x="${W-R+6}" y="${Y(v)+3.5}" font-size="10" fill="${s.color}" font-weight="600">${v>=0?'+':''}${fmt(v,1)}%</text>`;
+  }).join('');
+  const legend = series.map(s=>`<span><i style="background:${s.color}"></i>${s.name}（${s.bt.return_pct>=0?'+':''}${fmt(s.bt.return_pct)}%）</span>`).join('');
+  $('equity-chart').innerHTML = `<div class="equity-box">
+    <div class="equity-head"><b style="color:var(--text)">权益曲线（相对初始资金）</b><div class="equity-legend">${legend}</div></div>
+    <svg viewBox="0 0 ${W} ${H}" style="min-width:640px">
+      ${yTicks}${xTicks}
+      <line x1="${L}" x2="${W-R}" y1="${zeroY}" y2="${zeroY}" stroke="#b9c2d1" stroke-width="1"/>
+      ${stopLines}${paths}${ends}
+    </svg>
+  </div>`;
+}
+
+function drawChart(d){
+  _chartData = d;
+  const data = d.kline_tail, price = d.quote.price;
+  const single = d.params.single_grid;
+  const W=860, H=380, L=52, R=116, T=18, B=34;
+  const iw = W-L-R, ih = H-T-B;
+  const g1 = d.main_grid, g2 = d.aux_grid;
+  // 图层开关：主网格 / 辅助网格（辅助网格仅主网格模式下无数据）
+  const showMain = layerState.main;
+  const showAux = !single && layerState.aux;
+  // 标签列位置：两层都开时主网格在最右列、辅助网格在中间列；只开一层时该层标签移最右列
+  const mainLX = W-R+112, auxLX = (showMain && showAux) ? W-R+56 : W-R+112;
+  let lo = Math.min(...data.map(x=>x.close), g1.lower, single ? price : g2.lower, price);
+  let hi = Math.max(...data.map(x=>x.close), g1.upper, single ? price : g2.upper, price);
+  const pad = (hi-lo)*0.06; lo-=pad; hi+=pad;
+  const X = i => L + iw * i/(data.length-1);
+  const Y = p => T + ih * (1 - (p-lo)/(hi-lo));
+  const line = data.map((x,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(x.close).toFixed(1)}`).join(' ');
+
+  const band = (l, u, color) => {
+    const y1=Y(u), y2=Y(l);
+    return `<rect x="${L}" y="${y1}" width="${iw}" height="${Math.max(1,y2-y1)}" fill="${color}" stroke="none"/>`;
+  };
+  // 右侧价格标签：最右列=主网格（蓝），中间列=辅助网格（橙）
+  // 碰撞检测：只与同列标签避让（X 已错开 56px，不同列 Y 重叠也不影响视觉）
+  // 同列 Y 距离 < 11px 视为相邻重叠，跳过；< 5px 视为完全遮挡，跳过
+  const placed = { main: [], aux: [] };
+  const tryPlace = (y, col) => {
+    for (const y2 of placed[col]) {
+      if (Math.abs(y2 - y) < 5) return false; // 完全重叠
+      if (Math.abs(y2 - y) < 11) return false; // 同行相邻
+    }
+    return true;
+  };
+  let gridLines = '';
+  // 只画可买档位（最高档只挂卖不买入，不画虚线/标签，与网格参数卡「档位数量」保持一致；同时色带上边缘不再有线）
+  if(showMain) g1.levels.slice(0, -1).forEach(p => {
+    const y = Y(p);
+    const line = `<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#7ba0e8" stroke-width="0.7" stroke-dasharray="4 4" opacity="0.8"/>`;
+    if (tryPlace(y, 'main')) {
+      placed.main.push(y);
+      gridLines += line +
+        `<text x="${mainLX}" y="${y+3.5}" font-size="9.5" fill="#4a6fb5" text-anchor="end">${fmt(p)}</text>`;
+    } else {
+      gridLines += line;
+    }
+  });
+  if(showAux) g2.levels.slice(0, -1).forEach(p => {
+    const y = Y(p);
+    const line = `<line x1="${L}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#d9a441" stroke-width="0.7" stroke-dasharray="2 4" opacity="0.7"/>`;
+    if (tryPlace(y, 'aux')) {
+      placed.aux.push(y);
+      gridLines += line +
+        `<text x="${auxLX}" y="${y+3.5}" font-size="9.5" fill="#c2700c" text-anchor="end">${fmt(p)}</text>`;
+    } else {
+      gridLines += line;
+    }
+  });
+  // 双列列头（跟随图层开关）
+  const colHeads =
+    (showMain ? `<text x="${mainLX}" y="${T+4}" font-size="9.5" fill="#4a6fb5" text-anchor="end" font-weight="600">主网格</text>` : '') +
+    (showAux ? `<text x="${auxLX}" y="${T+4}" font-size="9.5" fill="#c2700c" text-anchor="end" font-weight="600">辅网格</text>` : '');
+  const midY = Y(d.axis.recommended);
+  let xTicks = '';
+  // x轴标签：固定5个位置，最后一个必须是最近交易日（避免右侧空白误以为过期）
+  const n = data.length;
+  const positions = [0, Math.floor(n/4), Math.floor(n/2), Math.floor(3*n/4), n-1].filter((v,i,a)=>a.indexOf(v)===i);
+  positions.forEach(i => {
+    const label = (i===n-1) ? data[i].date.slice(2) : data[i].date.slice(2,7);
+    const anchor = (i===n-1 ? 'end' : i===0 ? 'start' : 'middle');
+    xTicks += `<text x="${X(i)}" y="${H-10}" font-size="10" fill="#8b93a1" text-anchor="${anchor}">${label}</text>`;
+  });
+  let yTicks = '';
+  const step = (hi-lo)/5;
+  for(let i=0;i<=5;i++){
+    const p = lo + step*i, y = Y(p);
+    yTicks += `<line x1="${L-4}" x2="${W-R}" y1="${y}" y2="${y}" stroke="#eef1f6" stroke-width="1"/>
+      <text x="${L-7}" y="${y+3.5}" font-size="10" fill="#8b93a1" text-anchor="end">${fmt(p)}</text>`;
+  }
+  const lastX = X(data.length-1), priceY = Y(price);
+  $('chart').innerHTML = `<svg viewBox="0 0 ${W} ${H}">
+    ${showMain ? band(g1.lower,g1.upper,'#eaf1fd') : ''}${showAux ? band(g2.lower,g2.upper,'#fdf6e8') : ''}
+    ${yTicks}${xTicks}
+    ${gridLines}${colHeads}
+    <line x1="${L}" x2="${W-R}" y1="${midY}" y2="${midY}" stroke="#d93026" stroke-width="1.4" stroke-dasharray="7 4"/>
+    <text x="${L+6}" y="${midY-5}" font-size="11" fill="#d93026" font-weight="600">中轴 ${fmt(d.axis.recommended)}</text>
+    <path d="${line}" fill="none" stroke="#1a56db" stroke-width="1.8"/>
+    <circle cx="${lastX}" cy="${priceY}" r="4" fill="#d93026" stroke="#fff" stroke-width="1.5"/>
+    <text x="${Math.min(lastX-8,W-150)}" y="${priceY-8}" font-size="11" fill="#d93026" font-weight="700" text-anchor="end">现价 ${fmt(price)}（${data[data.length-1].date.slice(5)}）</text>
+  </svg>`;
+}
+
+// ---- 目录导航：滚动高亮当前模块 ----
+function initToc(){
+  const ids = ['p-stock','p-axis','p-grid','p-chart','p-bt','p-risk'];
+  const links = Array.from(document.querySelectorAll('#toc a'));
+  const secs = ids.map(id => document.getElementById(id)).filter(Boolean);
+  if(!('IntersectionObserver' in window)) return;
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if(e.isIntersecting){
+        links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id));
+      }
+    });
+  }, {rootMargin:'-12% 0px -72% 0px'});
+  secs.forEach(s => obs.observe(s));
+}
+
+// 恢复上次输入；首次打开无记录时默认演示代码，加载后自动分析
+restoreInputs();
+initToc();
+if(!$('code').value) $('code').value = '600000';
+window.addEventListener('load', () => analyze());
+</script>
+</body>
+</html>
