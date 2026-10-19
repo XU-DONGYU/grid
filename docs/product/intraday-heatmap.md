@@ -1,10 +1,10 @@
 # 5 分钟参数高原热力图 产品文档
 
-- `doc_version`: 0.1.0
+- `doc_version`: 0.2.0
 - `last_updated`: 2026-10-19
-- `related_code`: `grid_analyzer/services/intraday_heatmap.py`（规划中）、`grid_analyzer/data/intraday.py`（规划中）、`grid_analyzer/backtest/engine.py`
-- `related_api`: `POST /api/intraday-heatmap`（规划中）
-- `related_tests`: `tests/unit/test_intraday_*.py`（规划中）、`tests/integration/test_intraday_heatmap.py`（规划中）
+- `related_code`: `grid_analyzer/services/intraday_heatmap.py`, `grid_analyzer/services/intraday_research.py`, `grid_analyzer/data/intraday.py`, `grid_analyzer/backtest/engine.py`, `grid_analyzer/backtest/metrics.py`
+- `related_api`: `POST /api/intraday-heatmap`
+- `related_tests`: `tests/unit/test_intraday_backtest.py`, `tests/unit/test_intraday_cache.py`, `tests/unit/test_intraday_research.py`, `tests/unit/test_metrics.py`, `tests/integration/test_intraday_heatmap.py`
 
 ## 1. 产品目标与非目标
 
@@ -168,7 +168,7 @@ target_gap = K × 日线 ATR(14)%
 
 ## 8. API 契约
 
-接口：`POST /api/intraday-heatmap`（规划中）。
+接口：`POST /api/intraday-heatmap`。
 
 响应顶层包含：
 
@@ -238,6 +238,7 @@ target_gap = K × 日线 ATR(14)%
 | 日期 | 版本 | 变更 |
 |---|---|---|
 | 2026-10-19 | 0.1.0 | 初版：确定 6 个月窗口、70/30、滚动 OOS、最终盲测和产品文档约束 |
+| 2026-10-19 | 0.2.0 | 实现 BaoStock 数据层、5 分钟引擎、指标、滚动 OOS、最终盲测、API 和前端面板 |
 
 相关文档：
 

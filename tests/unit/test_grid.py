@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import app
 
 
@@ -131,3 +133,24 @@ def test_gap_scale_widens_spacing() -> None:
     wider = app.design_grid(**common, gap_scale=1.2)
     assert wider["gap_pct"] > base["gap_pct"]
     assert len(wider["levels"]) <= len(base["levels"])
+
+
+def test_gap_override_uses_target_gap() -> None:
+    grid = app.design_grid(
+        95,
+        105,
+        100,
+        1_000_000,
+        sigma_daily=0.015,
+        atr_pct=2.5,
+        spread_pct=0.05,
+        fee_pct=0.025,
+        gap_ratio=1.2,
+        sigma_mult=1.0,
+        atr_anchor=0.7,
+        gap_cap=0.08,
+        min_fee=5,
+        gap_override=0.02,
+    )
+    assert grid["gap_pct"] == pytest.approx(2.0)
+    assert grid["gap_override_pct"] == pytest.approx(2.0)
