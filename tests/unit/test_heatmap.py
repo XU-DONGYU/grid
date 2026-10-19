@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from grid_analyzer.services.heatmap import (
+    build_heatmap_payload,
     render_heatmap_html,
     write_heatmap,
 )
@@ -67,3 +68,23 @@ def test_write_heatmap(tmp_path: Path) -> None:
     assert path == output
     assert output.exists()
     assert "TEST" in output.read_text(encoding="utf-8")
+
+
+def test_build_heatmap_payload() -> None:
+    results = [
+        make_result(0.9, 0.0, 1.0),
+        make_result(1.0, 0.0, 2.0),
+        make_result(0.9, 5.0, 3.0),
+        make_result(1.0, 5.0, 4.0),
+    ]
+    payload = build_heatmap_payload(results, code="TEST")
+    assert payload["code"] == "TEST"
+    assert payload["gap_scales"] == [0.9, 1.0]
+    assert payload["stop_losses"] == [0.0, 5.0]
+    assert len(payload["cells"]) == 4
+    assert payload["best"] == {
+        "gap_scale": 1.0,
+        "stop_loss": 5.0,
+        "value": 4.0,
+        "count": 1,
+    }

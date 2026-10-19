@@ -36,6 +36,23 @@
   button#btn:hover{background:var(--blue-dark)}
   button#btn:disabled{background:#9db4e6;cursor:not-allowed}
   .field input:disabled{background:#f0f2f5;color:var(--text3)}
+
+  .field select{border:1.5px solid var(--line);border-radius:9px;padding:9px 12px;font-size:14px;background:#fff;outline:none;transition:border .15s}
+  .field select:focus{border-color:var(--blue)}
+  .secondary-btn{background:#fff;color:var(--blue-dark);border:1.5px solid #bcd0f5;border-radius:9px;padding:10px 20px;font-size:14px;font-weight:600;cursor:pointer;transition:background .15s,border .15s}
+  .secondary-btn:hover{background:var(--blue-light);border-color:var(--blue)}
+  .secondary-btn:disabled{opacity:.5;cursor:not-allowed}
+  .heatmap-controls{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px}
+  #heatmap-wrap{overflow-x:auto;margin-top:6px}
+  .hm-head{font-size:13px;color:var(--text2);margin:4px 0 10px}
+  .hm-table{border-collapse:separate;border-spacing:4px;width:100%;table-layout:fixed;min-width:560px}
+  .hm-table th{font-size:12px;color:var(--text2);font-weight:600;padding:6px;text-align:center}
+  .hm-table th:first-child{width:88px;text-align:left}
+  .hm-table td{text-align:center;font-size:12px;font-weight:600;padding:12px 6px;border-radius:8px;color:var(--text)}
+  .hm-table td.hm-empty{background:#f3f5f8;color:var(--text3);font-weight:400}
+  .hm-table td.hm-best{outline:3px solid var(--blue);outline-offset:1px}
+  .hm-legend{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:12px;color:var(--text2)}
+  .hm-legend-bar{flex:1;height:12px;border-radius:6px;background:linear-gradient(90deg,#d93026,#f0c36d,#0a8a4a)}
   .check-field{flex-direction:row;align-items:center;gap:6px;padding-bottom:10px;cursor:pointer;user-select:none}
   .check-field input{width:16px;height:16px;accent-color:var(--blue);cursor:pointer}
   .check-field span{font-size:13px;color:var(--text2)}

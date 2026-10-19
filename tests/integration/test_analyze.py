@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from grid_analyzer.api.routes import get_market_data_provider
-from grid_analyzer.api.schemas import AnalyzeResponse
+from grid_analyzer.api.schemas import AnalyzeResponse, HeatmapResponse
 from grid_analyzer.main import app
 
 
@@ -138,3 +138,43 @@ def test_static_assets_are_served(client: TestClient) -> None:
 def test_invalid_code_returns_400(client: TestClient) -> None:
     response = client.get("/api/analyze", params={"code": "abc"})
     assert response.status_code == 400
+
+
+def test_heatmap_api_contract(client_for: Any, fixture_002541: dict) -> None:
+    client = client_for(fixture_002541)
+    response = client.get(
+        "/api/heatmap",
+        params={
+            "code": "002541",
+            "capital": 100_000,
+            "fee": 0.025,
+            "min_fee": 5,
+            "history_days": 250,
+            "calib_days": 120,
+            "test_days": 60,
+            "step": 60,
+            "gap_scales": "0.9,1.0",
+            "stop_losses": "0,5",
+            "init_positions": "0",
+            "metric": "mean_return_pct",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    contract = HeatmapResponse.model_validate(body)
+    assert contract.schema_version == 1
+    assert contract.data.code == "002541"
+    assert contract.data.metric == "mean_return_pct"
+    assert contract.data.gap_scales == [0.9, 1.0]
+    assert contract.data.stop_losses == [0.0, 5.0]
+    assert len(contract.data.cells) == 4
+    assert contract.data.sample_count == 4
+    assert contract.data.best is not None
+
+
+def test_heatmap_rejects_unknown_metric(client: TestClient) -> None:
+    response = client.get(
+        "/api/heatmap",
+        params={"code": "002541", "metric": "not-a-metric"},
+    )
+    assert response.status_code == 422

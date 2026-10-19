@@ -85,7 +85,7 @@ gap = max(gap, min_gap)
 
 选择高原时优先看相邻参数是否同样稳定，而不是单点最高收益。
 
-`scripts/sweep.py` 会额外生成 HTML 热力图，横轴为 `gap_scale`，纵轴为 `stop_loss`，单元格为 `init_position` 维度上的均值。
+`scripts/sweep.py` 会额外生成 HTML 热力图，网页端也提供“参数高原热力图”面板。横轴为 `gap_scale`，纵轴为 `stop_loss`，单元格为 `init_position` 维度上的均值。
 
 ## 7. 已知限制
 

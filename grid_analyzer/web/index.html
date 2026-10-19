@@ -22,6 +22,7 @@
     <a href="#p-grid">网格参数</a>
     <a href="#p-chart">价格走势</a>
     <a href="#p-bt">历史回测</a>
+    <a href="#p-heatmap">参数热力图</a>
     <a href="#p-risk">风险提示</a>
   </nav>
 
@@ -108,6 +109,26 @@
       <div id="equity-chart"></div>
       <div class="note" id="bt-note"></div>
       <div class="note">回测假设：事件驱动 + T+1；当日买入不可当日卖出；买入受可用现金约束；跳空按前收盘→开盘→日内高低→收盘路径估算；费用含双边佣金（含最低佣金）与印花税（卖出0.05%）；初始底仓按首日开盘价真实扣款（默认0，即中性零底仓）；跌破网格下限指定比例后清仓并停止交易。历史表现不代表未来收益。</div>
+    </div>
+
+    <div class="panel" id="p-heatmap">
+      <div class="card-title"><span class="bar"></span>参数高原热力图</div>
+      <div class="heatmap-controls">
+        <div class="field">
+          <label>评估指标</label>
+          <select id="heatmap-metric">
+            <option value="plateau_score">稳健性评分</option>
+            <option value="mean_return_pct">平均收益</option>
+            <option value="compounded_return_pct">复利收益</option>
+            <option value="worst_return_pct">最差窗口</option>
+            <option value="max_drawdown_pct">最大回撤</option>
+          </select>
+        </div>
+        <button id="heatmap-btn" class="secondary-btn">生成热力图</button>
+        <span id="heatmap-status" class="hint"></span>
+      </div>
+      <div id="heatmap-wrap"></div>
+      <div class="note">基于当前股票、资金与佣金，使用最近约 250 日数据做 Walk-forward 参数扫描；横轴为格距缩放，纵轴为破网止损，颜色越绿表示该指标越优。</div>
     </div>
 
     <div class="panel" id="p-risk">

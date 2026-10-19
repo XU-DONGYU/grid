@@ -1,7 +1,8 @@
 import { $ } from './dom.js';
-import { analyzeMarket } from './api.js';
+import { analyzeMarket, fetchHeatmap } from './api.js';
 import { render } from './render.js';
 import { toggleLayer } from './charts.js';
+import { renderHeatmap } from './heatmap.js';
 
 const LS_KEY = 'grid_analyzer_input';
 
@@ -65,6 +66,8 @@ async function analyze() {
   const stoploss = Math.min(50, Math.max(0, parseFloat($('stoploss').value) || 0));
 
   saveInputs();
+  $('heatmap-wrap').innerHTML = '';
+  $('heatmap-status').textContent = '';
   $('err').style.display = 'none';
   $('result').style.display = 'none';
   $('loading').style.display = 'block';
@@ -81,8 +84,33 @@ async function analyze() {
   }
 }
 
+async function generateHeatmap() {
+  const code = $('code').value.trim();
+  if (!code) {
+    $('heatmap-status').textContent = '请先输入股票代码';
+    return;
+  }
+  const capital = parseFloat($('capital').value) || 100000;
+  const fee = parseFloat($('fee').value) || 0;
+  const minfee = Math.max(0, parseFloat($('minfee').value) || 0);
+  const metric = $('heatmap-metric').value;
+
+  $('heatmap-btn').disabled = true;
+  $('heatmap-status').textContent = '正在计算参数热力图，请稍候…';
+  try {
+    const data = await fetchHeatmap({ code, capital, fee, minfee, metric });
+    renderHeatmap(data, $('heatmap-wrap'));
+    $('heatmap-status').textContent = '计算完成';
+  } catch (e) {
+    $('heatmap-status').textContent = e.message;
+    $('heatmap-wrap').innerHTML = '';
+  } finally {
+    $('heatmap-btn').disabled = false;
+  }
+}
+
 function initToc() {
-  const ids = ['p-stock', 'p-axis', 'p-grid', 'p-chart', 'p-bt', 'p-risk'];
+  const ids = ['p-stock', 'p-axis', 'p-grid', 'p-chart', 'p-bt', 'p-heatmap', 'p-risk'];
   const links = Array.from(document.querySelectorAll('#toc a'));
   const secs = ids.map(id => document.getElementById(id)).filter(Boolean);
   if (!('IntersectionObserver' in window)) return;
@@ -101,6 +129,7 @@ $('code').addEventListener('keydown', e => { if (e.key === 'Enter') analyze(); }
 $('single').addEventListener('change', syncSingleUI);
 $('layer-main').addEventListener('click', () => toggleLayer('main'));
 $('layer-aux').addEventListener('click', () => toggleLayer('aux'));
+$('heatmap-btn').addEventListener('click', generateHeatmap);
 
 restoreInputs();
 initToc();

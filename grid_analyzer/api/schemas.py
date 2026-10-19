@@ -189,3 +189,40 @@ class HealthResponse(ApiModel):
 class VersionResponse(ApiModel):
     version: str
     schema_version: int = SCHEMA_VERSION
+
+
+class HeatmapCell(ApiModel):
+    gap_scale: float
+    stop_loss: float
+    value: float
+    count: int
+    color: str
+    is_best: bool
+
+
+class HeatmapBest(ApiModel):
+    gap_scale: float
+    stop_loss: float
+    value: float
+    count: int
+
+
+class HeatmapPayload(ApiModel):
+    name: str = ""
+    code: str
+    metric: str
+    metric_label: str
+    direction: str
+    gap_scales: list[float]
+    stop_losses: list[float]
+    low: float
+    high: float
+    best: HeatmapBest | None = None
+    cells: list[HeatmapCell]
+    sample_count: int
+
+
+class HeatmapResponse(ApiModel):
+    ok: bool = True
+    schema_version: int = SCHEMA_VERSION
+    data: HeatmapPayload

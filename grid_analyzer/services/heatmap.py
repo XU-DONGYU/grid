@@ -4,6 +4,7 @@ import html
 import statistics
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 from grid_analyzer.services.research import SweepResult
 
@@ -51,23 +52,30 @@ def _color(value: float, low: float, high: float, reverse: bool) -> str:
     return f"#{int(r):02x}{int(g):02x}{int(b):02x}"
 
 
-def render_heatmap_html(
+def _prepare_heatmap(
     results: list[SweepResult],
     *,
     code: str = "",
     metric: str = "plateau_score",
-    title: str | None = None,
-) -> str:
+) -> dict[str, Any]:
     metric_label = METRIC_LABELS.get(metric)
     if metric_label is None:
         raise ValueError(f"unsupported metric: {metric}")
 
-    title_text = title or f"{code} 参数高原热力图".strip()
     if not results:
-        return f"""<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="utf-8"><title>{html.escape(title_text)}</title></head>
-<body><h1>{html.escape(title_text)}</h1><p>暂无扫描结果。</p></body></html>
-"""
+        return {
+            "code": code,
+            "metric": metric,
+            "metric_label": metric_label,
+            "direction": "lower" if metric in LOWER_IS_BETTER else "higher",
+            "gap_scales": [],
+            "stop_losses": [],
+            "low": 0.0,
+            "high": 0.0,
+            "best": None,
+            "cells": [],
+            "sample_count": 0,
+        }
 
     grouped: dict[tuple[float, float], list[float]] = defaultdict(list)
     for result in results:
@@ -88,34 +96,99 @@ def render_heatmap_html(
         matrix, key=lambda key: matrix[key][0]
     )
 
-    header = "".join(
-        f"<th>{html.escape(f'{gap:.2f}')}</th>" for gap in gap_scales
-    )
-    rows = []
-    for stop in stop_losses:
-        cells = []
-        for gap in gap_scales:
+    cells = []
+    for gap in gap_scales:
+        for stop in stop_losses:
             key = (gap, stop)
             if key not in matrix:
-                cells.append('<td class="empty">—</td>')
                 continue
             value, count = matrix[key]
-            color = _color(value, low, high, reverse)
-            css = "cell best" if key == best_key else "cell"
+            cells.append(
+                {
+                    "gap_scale": gap,
+                    "stop_loss": stop,
+                    "value": value,
+                    "count": count,
+                    "color": _color(value, low, high, reverse),
+                    "is_best": key == best_key,
+                }
+            )
+
+    best_value, best_count = matrix[best_key]
+    return {
+        "code": code,
+        "metric": metric,
+        "metric_label": metric_label,
+        "direction": "lower" if reverse else "higher",
+        "gap_scales": gap_scales,
+        "stop_losses": stop_losses,
+        "low": low,
+        "high": high,
+        "best": {
+            "gap_scale": best_key[0],
+            "stop_loss": best_key[1],
+            "value": best_value,
+            "count": best_count,
+        },
+        "cells": cells,
+        "sample_count": len(results),
+    }
+
+
+def build_heatmap_payload(
+    results: list[SweepResult],
+    *,
+    code: str = "",
+    metric: str = "plateau_score",
+) -> dict[str, Any]:
+    return _prepare_heatmap(results, code=code, metric=metric)
+
+
+def render_heatmap_html(
+    results: list[SweepResult],
+    *,
+    code: str = "",
+    metric: str = "plateau_score",
+    title: str | None = None,
+) -> str:
+    payload = _prepare_heatmap(results, code=code, metric=metric)
+    title_text = title or f"{code} 参数高原热力图".strip()
+    if not results:
+        return f"""<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>{html.escape(title_text)}</title></head>
+<body><h1>{html.escape(title_text)}</h1><p>暂无扫描结果。</p></body></html>
+"""
+
+    cell_map = {
+        (cell["gap_scale"], cell["stop_loss"]): cell for cell in payload["cells"]
+    }
+    header = "".join(
+        f"<th>{html.escape(f'{gap:.2f}')}</th>" for gap in payload["gap_scales"]
+    )
+    rows = []
+    for stop in payload["stop_losses"]:
+        cells = []
+        for gap in payload["gap_scales"]:
+            cell = cell_map.get((gap, stop))
+            if cell is None:
+                cells.append('<td class="empty">—</td>')
+                continue
+            css = "cell best" if cell["is_best"] else "cell"
             tooltip = (
                 f"gap_scale={gap:.2f}, stop_loss={stop:.1f}, "
-                f"{metric_label}={_format_value(value, metric)}, 样本数={count}"
+                f"{payload['metric_label']}={_format_value(cell['value'], metric)}, "
+                f"样本数={cell['count']}"
             )
             cells.append(
-                f'<td class="{css}" style="background:{color}" '
-                f'data-count="{count}" title="{html.escape(tooltip)}">'
-                f"{_format_value(value, metric)}</td>"
+                f'<td class="{css}" style="background:{cell["color"]}" '
+                f'data-count="{cell["count"]}" title="{html.escape(tooltip)}">'
+                f"{_format_value(cell['value'], metric)}</td>"
             )
         rows.append(
             f"<tr><th>{html.escape(f'{stop:.1f}')}</th>{''.join(cells)}</tr>"
         )
 
-    direction = "越低越好" if reverse else "越高越好"
+    direction = "越低越好" if payload["direction"] == "lower" else "越高越好"
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -142,12 +215,12 @@ def render_heatmap_html(
 <body>
 <div class="card">
   <h1>{html.escape(title_text)}</h1>
-  <p>指标：{html.escape(metric_label)}（{direction}）。行 = stop_loss，列 = gap_scale。单元格为 init_position 维度上的均值。</p>
+  <p>指标：{html.escape(payload['metric_label'])}（{direction}）。行 = stop_loss，列 = gap_scale。单元格为 init_position 维度上的均值。</p>
   <table>
     <thead><tr><th>stop \\ gap</th>{header}</tr></thead>
     <tbody>{''.join(rows)}</tbody>
   </table>
-  <div class="legend"><span>{_format_value(low, metric)}</span><div class="bar"></div><span>{_format_value(high, metric)}</span></div>
+  <div class="legend"><span>{_format_value(payload['low'], metric)}</span><div class="bar"></div><span>{_format_value(payload['high'], metric)}</span></div>
   <div class="note">优先选择颜色连续、相邻格距和止损表现都稳定的高原区域，而不是单点最亮的孤岛。悬停单元格可查看样本数。</div>
 </div>
 </body>

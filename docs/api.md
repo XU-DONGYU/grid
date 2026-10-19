@@ -48,6 +48,38 @@
 - `risks`：风险提示
 - `version`：应用版本
 
+## GET /api/heatmap
+
+基于 Walk-forward 结果生成参数高原矩阵。查询参数：
+
+| 参数 | 默认值 | 说明 |
+|---|---|---|
+| `code` | 必填 | 股票代码 |
+| `capital` | `100000` | 总资金 |
+| `fee` | `0.025` | 单边佣金 % |
+| `min_fee` | `5` | 单笔最低佣金 |
+| `history_days` | `250` | 拉取历史天数 |
+| `calib_days` | `120` | 每个窗口的校准天数 |
+| `test_days` | `60` | 每个窗口的测试天数 |
+| `step` | `60` | 滚动步长 |
+| `gap_scales` | `0.9,1.0,1.1` | 格距缩放列表 |
+| `stop_losses` | `0,5` | 止损列表 |
+| `init_positions` | `0,0.2` | 初始底仓列表 |
+| `metric` | `plateau_score` | 热力图指标 |
+| `spread_pct` | `0.05` | 历史价差代理 % |
+
+响应 `data` 包含：
+
+- `name` / `code`
+- `metric` / `metric_label` / `direction`
+- `gap_scales` / `stop_losses`
+- `cells`：每个单元格的 `gap_scale`、`stop_loss`、`value`、`count`、`color`、`is_best`
+- `best`：当前指标最优组合
+- `low` / `high`：颜色图例范围
+- `sample_count`：参数组合数量
+
+前端页面中的“参数高原热力图”面板会调用该接口。
+
 ## GET /api/health
 
 返回：

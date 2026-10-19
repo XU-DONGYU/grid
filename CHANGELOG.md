@@ -8,3 +8,4 @@
 - 移除陈旧的 `requirements.txt`，依赖统一由 `pyproject.toml` 管理。
 - 新增 `docs/api.md`。
 - 参数扫描新增自包含 HTML 热力图，支持切换评估指标。
+- 网页端新增“参数高原热力图”面板，接入 `/api/heatmap`。
