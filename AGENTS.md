@@ -87,16 +87,63 @@
 
 ### 1. 项目定位
 
-本项目是个人研究工具，用于：
+本项目是个人研究工具，分两步建设：
 
-- A 股单只股票的网格参数分析。
-- 网格区间、间距、资金分配建议。
-- 事件驱动回测。
-- 参数扫描、Walk-forward 和参数高原研究。
+- 第一步（当前主线）：给定股票代码，返回设置网格交易所需的参数，并展示指标、风险提示和回测数据。
+- 第二步（规划中）：根据规则在整个 A 股市场筛选候选股票。
 
-不是多人 Web 产品，不是自动交易系统，不提供投资建议。
+项目不是多人 Web 产品，不是自动交易系统，不提供投资建议。筛选结果只是研究候选池，不是买卖指令。
 
-### 2. 技术栈
+### 2. 两步功能目标
+
+#### Step 1：单只股票网格参数分析（当前主线）
+
+输入股票代码、资金、佣金、最低佣金、主网格占比、初始底仓和止损，返回：
+
+- 当前推荐网格：中轴、区间、间距、档位、每格股数、资金占用。
+- 指标：HV、ATR、布林带宽分位、Vol of Vol、Squeeze、趋势、适配度、流动性。
+- 风险提示和资金约束标记。
+- 历史校准参数、回测结果和权益曲线。
+- 参数热力图入口。
+
+Step 1 验收标准：
+
+- `/api/analyze` 契约稳定，响应包含 `schema_version`。
+- 回测满足 T+1、现金约束、费用、止损和无未来函数。
+- 前端能完整展示参数、指标、回测和风险。
+- `002541`、`600000` 固定夹具的特征测试通过。
+
+#### Step 2：A 股全市场规则筛选（规划中）
+
+目标是根据规则筛选候选股票并排序，而不是对全市场直接给出买卖建议。
+
+筛选结果至少包含：
+
+- 股票代码、名称、市场、快照日期。
+- 命中/未命中的规则和原因。
+- 关键指标：价格、成交额、换手率、ATR%、波动率、带宽分位、Squeeze、趋势、适配度。
+- 网格可行性：一手资金、档位数量、`capital_constrained`。
+- 回测稳健性：`plateau_score`、平均/最差收益、最大回撤、止损次数。
+- 风险标签：流动性差、单边趋势、挤压、资金不足、数据不足。
+
+Step 2 实现原则：
+
+- 复用 `AnalysisService`、网格设计和回测引擎，不复制业务公式。
+- 先做可解释的规则过滤，再做回测排序；不要只按单点最高收益排序。
+- 记录数据快照日期和筛选时间，保证结果可复现。
+- 单只股票失败不能中断整个市场扫描。
+- 全市场扫描必须分批、限速、缓存，并提供进度和失败重试。
+- 筛选逻辑放在后端配置或后端代码中，前端只展示。
+
+Step 2 验收标准（实现时）：
+
+- 离线股票池夹具可重复运行。
+- 同一只股票在筛选结果中的核心指标与 Step 1 一致。
+- 排除规则、排序规则、分页和失败重试有测试。
+- 不存在未来函数、幸存者偏差和未限速的批量外部请求。
+- 输出明确说明“研究候选，不构成投资建议”。
+
+### 3. 技术栈
 
 - Python 3.11+，当前运行环境可能是 Python 3.14。
 - FastAPI + Uvicorn。
@@ -106,7 +153,7 @@
 - pytest + pytest-cov + ruff + mypy + pre-commit。
 - systemd 部署，服务名为 `grid.service`。
 
-### 3. 常用命令
+### 4. 常用命令
 
 ```bash
 make install      # 创建虚拟环境并安装依赖
@@ -125,7 +172,7 @@ make ci           # lint + typecheck + test + scan
 .venv/bin/python scripts/sweep.py --help
 ```
 
-### 4. 目录边界
+### 5. 目录边界
 
 | 路径 | 职责 |
 |---|---|
@@ -133,25 +180,32 @@ make ci           # lint + typecheck + test + scan
 | `grid_analyzer/main.py` | 创建 app、中间件、静态资源、首页 |
 | `grid_analyzer/api/` | HTTP 路由和 Pydantic 契约 |
 | `grid_analyzer/services/` | 分析、研究、热力图编排 |
+| `grid_analyzer/screening/`（规划中） | 全市场筛选规则、排序、评分 |
+| `grid_analyzer/services/screening.py`（规划中） | 批量筛选编排、进度、失败重试 |
+| `grid_analyzer/data/universe.py`（规划中） | A 股股票池、快照日期、分页与限速 |
 | `grid_analyzer/data/` | 行情提供方、解析、缓存 |
 | `grid_analyzer/indicators/` | 纯指标计算 |
 | `grid_analyzer/grid/` | 间距、主辅网格、资金分配 |
 | `grid_analyzer/backtest/` | 回测引擎、滚动窗口 |
 | `grid_analyzer/risk/` | 风险规则 |
 | `grid_analyzer/web/` | HTML 骨架、CSS、ES Modules |
+| `grid_analyzer/web/static/js/screening.js`（规划中） | 筛选结果表格、过滤、排序 |
 | `scripts/` | CLI 研究工具、隐私扫描 |
+| `scripts/screen.py`（规划中） | 全市场筛选 CLI |
 | `tests/` | 单元、集成、离线夹具 |
 | `docs/` | 架构、方法论、API、ADR |
 
 依赖方向：
 
 ```text
-api → services → indicators/grid/backtest/risk → data
+api → services → screening → indicators/grid/backtest/risk → data
 ```
+
+`screening` 是 Step 2 的规划模块；实现时必须保持纯规则计算与外部数据 I/O 分离。
 
 禁止让 `indicators`、`grid`、`backtest`、`risk` 依赖 FastAPI 或直接访问网络。
 
-### 5. 领域规则
+### 6. 领域规则
 
 #### 网格设计
 
@@ -187,7 +241,20 @@ api → services → indicators/grid/backtest/risk → data
 - `init_position` 是隐藏聚合维度，每个单元格显示其均值。
 - 不要把单点最高收益当作最终结论；优先看参数高原。
 
-### 6. API 契约
+#### 全市场筛选（Step 2，规划中）
+
+- 股票池必须明确快照日期和数据来源。
+- 如果无法获得历史时点股票池，必须明确标注幸存者偏差风险。
+- 默认排除 ST/*ST、停牌、退市整理、上市不足 N 个交易日、成交额或换手率过低的标的；阈值必须可配置。
+- 价格和一手资金必须可承受；`capital_constrained` 的标的要单独标记。
+- 先用流动性、价格、资金可行性做粗筛，再运行完整分析和回测，避免无意义计算。
+- 排序优先使用稳健性指标：`plateau_score`、最差窗口收益、最大回撤、止损次数、正收益窗口比例；不能只看单点最高收益。
+- 所有筛选条件必须可解释，并随结果返回命中原因。
+- 外部数据必须缓存、限速、重试；禁止对全市场逐只股票无节制并发请求。
+- 单只股票的失败、停牌或数据不足必须被记录，不能中断整个扫描。
+- 结果只代表研究候选，不是投资建议，不直接触发交易。
+
+### 7. API 契约
 
 - 所有响应模型定义在 `grid_analyzer/api/schemas.py`。
 - 不允许在路由中直接返回未定义的裸 dict。
@@ -207,7 +274,14 @@ api → services → indicators/grid/backtest/risk → data
 - `GET /api/version`
 - `GET /api/heatmap`
 
-### 7. 前端规则
+计划中接口（Step 2 实现时新增，未实现前不得声称存在）：
+
+- `GET /api/screen` 或 `POST /api/screen`
+- `GET /api/universe`
+
+Step 2 的请求和响应必须 Pydantic 化，包含 `schema_version`、分页信息、规则命中原因和失败项。前端不得提前调用不存在的接口。
+
+### 8. 前端规则
 
 - 前端代码位于 `grid_analyzer/web/`。
 - 使用 ES Modules，不引入构建工具。
@@ -216,8 +290,10 @@ api → services → indicators/grid/backtest/risk → data
 - 不在 HTML 中写内联事件处理器；事件绑定放在 `main.js`。
 - 修改前端后至少运行 `node --check`。
 - 生产环境不要依赖浏览器缓存，HTML 和 API 均设置了 no-store。
+- Step 2 筛选页面只负责筛选条件、表格、排序、分页和进度展示；筛选规则与评分必须来自后端。
+- 不在浏览器中遍历全市场或计算回测指标。
 
-### 8. 数据层
+### 9. 数据层
 
 - 腾讯行情和 K 线解析放在 `grid_analyzer/data/tencent.py`。
 - 单元测试必须 mock 外部请求，不访问真实网络。
@@ -225,8 +301,11 @@ api → services → indicators/grid/backtest/risk → data
 - 缓存键必须包含代码、周期和天数。
 - 新增数据源时实现 `MarketDataProvider` 协议。
 - 不要在业务模块中直接调用 `requests`。
+- 全市场股票池（Step 2）必须通过独立的 `UniverseProvider` 获取，并记录快照日期。
+- 批量扫描必须使用缓存、限速和失败重试；不要在请求线程中无界并发。
+- 全市场结果必须可追溯到数据日期和规则版本。
 
-### 9. 版本与发布
+### 10. 版本与发布
 
 - 版本号唯一来源是 `grid_analyzer/__init__.py` 的 `__version__`。
 - `pyproject.toml` 通过动态版本读取该值，不要重复写版本号。
@@ -239,7 +318,7 @@ api → services → indicators/grid/backtest/risk → data
   - 文档更新
   - CHANGELOG 更新
 
-### 10. 部署
+### 11. 部署
 
 - 生产服务使用 systemd 单元 `grid.service`。
 - 服务重启后 PID 会变化，这是正常现象。
@@ -249,7 +328,7 @@ api → services → indicators/grid/backtest/risk → data
 - 没有权限时不要尝试强制重启；明确告知用户需要执行的操作。
 - 部署示例使用占位路径 `/path/to/grid`，不要提交个人绝对路径。
 
-### 11. 禁止事项
+### 12. 禁止事项
 
 - 禁止提交个人隐私信息、token、私钥、`.env`。
 - 禁止在测试中访问真实外部网络。
@@ -260,8 +339,12 @@ api → services → indicators/grid/backtest/risk → data
 - 禁止把缓存、覆盖率、egg-info、虚拟环境、研究输出提交到仓库。
 - 禁止为了让测试通过而删除不变量断言。
 - 禁止在没有说明的情况下改变回测口径。
+- 禁止把筛选结果描述为投资建议或自动交易信号。
+- 禁止在 Step 2 中使用未来数据、未记录快照日期的股票池或无上限并发请求。
+- 禁止在前端实现筛选公式、排序评分或回测逻辑。
+- 禁止因单只股票失败而中断全市场扫描。
 
-### 12. 完成定义
+### 13. 完成定义
 
 一个任务完成前必须满足：
 
@@ -273,7 +356,19 @@ api → services → indicators/grid/backtest/risk → data
 - 修改已提交并推送到 GitHub。
 - 最终汇报包含：做了什么、为什么、验证结果、剩余风险。
 
-### 13. 快速检查清单
+Step 1 变更额外要求：
+
+- 单股票分析接口、指标、回测和前端展示保持一致。
+- 固定夹具特征测试通过。
+
+Step 2 变更额外要求（实现时）：
+
+- 离线股票池夹具可重复。
+- 规则命中原因、排除原因和失败项可追溯。
+- 批量扫描具备缓存、限速、分页、排序和失败隔离。
+- 不引入未来函数和未声明的幸存者偏差。
+
+### 14. 快速检查清单
 
 ```text
 [ ] 阅读相关代码、测试和文档
@@ -288,6 +383,8 @@ api → services → indicators/grid/backtest/risk → data
 [ ] make scan
 [ ] git status / git diff 检查
 [ ] commit + push
+[ ] Step 1：单股票参数、指标、回测、风险展示一致
+[ ] Step 2：股票池快照、限速、失败隔离、筛选原因、无未来数据
 ```
 
 ---
