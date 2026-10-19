@@ -110,3 +110,15 @@ def _fetch_kline(prefix: str, code: str, days: int) -> list[dict]:
         except (ValueError, IndexError):
             continue
     return result
+
+
+class TencentMarketDataProvider:
+    """MarketDataProvider implementation backed by Tencent quote endpoints."""
+
+    def get_quote(self, code: str) -> dict:
+        prefix, digits = parse_code(code)
+        return fetch_quote(prefix, digits)
+
+    def get_klines(self, code: str, days: int = 250) -> list[dict]:
+        prefix, digits = parse_code(code)
+        return fetch_kline(prefix, digits, days)

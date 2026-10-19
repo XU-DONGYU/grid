@@ -1,23 +1,41 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 
-import app
+from grid_analyzer.api.routes import get_market_data_provider
+from grid_analyzer.main import app
+
+
+class FixtureProvider:
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self.payload = payload
+
+    def get_quote(self, code: str) -> dict:
+        return self.payload["quote"]
+
+    def get_klines(self, code: str, days: int = 250) -> list[dict]:
+        return self.payload["klines"]
 
 
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(app.app)
+def client() -> Iterator[TestClient]:
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()
 
 
-def patch_market(monkeypatch: pytest.MonkeyPatch, payload: dict) -> None:
-    monkeypatch.setattr(app, "fetch_quote", lambda prefix, digits: payload["quote"])
-    monkeypatch.setattr(
-        app,
-        "fetch_kline",
-        lambda prefix, digits, days=250: payload["klines"],
-    )
+@pytest.fixture
+def client_for() -> Iterator[Any]:
+    def make(payload: dict[str, Any]) -> TestClient:
+        app.dependency_overrides[get_market_data_provider] = lambda: FixtureProvider(payload)
+        return TestClient(app)
+
+    yield make
+    app.dependency_overrides.clear()
 
 
 def get_analysis(client: TestClient, code: str) -> dict:
@@ -39,12 +57,8 @@ def get_analysis(client: TestClient, code: str) -> dict:
     return body["data"]
 
 
-def test_analyze_002541_snapshot(
-    client: TestClient,
-    fixture_002541: dict,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    patch_market(monkeypatch, fixture_002541)
+def test_analyze_002541_snapshot(client_for: Any, fixture_002541: dict) -> None:
+    client = client_for(fixture_002541)
     data = get_analysis(client, "002541")
 
     assert data["version"] == "2.1"
@@ -70,12 +84,8 @@ def test_analyze_002541_snapshot(
     assert len(main["equity_curve"]) == 120
 
 
-def test_analyze_600000_snapshot(
-    client: TestClient,
-    fixture_600000: dict,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    patch_market(monkeypatch, fixture_600000)
+def test_analyze_600000_snapshot(client_for: Any, fixture_600000: dict) -> None:
+    client = client_for(fixture_600000)
     data = get_analysis(client, "600000")
 
     assert data["quote"]["name"] == "浦发银行"

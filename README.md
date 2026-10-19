@@ -83,7 +83,13 @@ make scan
 ├─ index.html              # 当前前端，后续拆分为静态模块
 ├─ file.md                 # 网格交易方法论文档
 ├─ grid_analyzer/
+│  ├─ main.py              # create_app、中间件、首页
+│  ├─ config.py            # 环境变量配置
+│  ├─ cache.py             # 行情 TTL 缓存
 │  ├─ constants.py         # 全局常量
+│  ├─ api/                 # FastAPI 路由与依赖
+│  ├─ services/            # 分析流程编排
+│  ├─ data/                # 腾讯行情与数据源协议
 │  ├─ utils/               # 费用与统计工具
 │  ├─ indicators/          # 中轴、波动率、趋势、评分、流动性
 │  ├─ grid/                # 间距与主/辅网格设计
