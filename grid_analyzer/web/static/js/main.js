@@ -53,7 +53,10 @@ function restoreInputs() {
     if (saved.hmKEnd !== undefined && saved.hmKEnd !== '') $('heatmap-k-end').value = saved.hmKEnd;
     if (saved.hmKStep !== undefined && saved.hmKStep !== '') $('heatmap-k-step').value = saved.hmKStep;
     if (saved.hmStop !== undefined && saved.hmStop !== '') $('heatmap-stop-losses').value = saved.hmStop;
-    if (saved.hmMetric) $('heatmap-metric').value = saved.hmMetric;
+    if (saved.hmMetric) {
+      const metricOptions = Array.from($('heatmap-metric').options).map(option => option.value);
+      if (metricOptions.includes(saved.hmMetric)) $('heatmap-metric').value = saved.hmMetric;
+    }
     if (saved.hmWindow !== undefined && saved.hmWindow !== '') $('heatmap-window-days').value = saved.hmWindow;
     if (saved.hmRatio !== undefined && saved.hmRatio !== '') $('heatmap-in-sample-ratio').value = saved.hmRatio;
     if (saved.hmBlind !== undefined && saved.hmBlind !== '') $('heatmap-final-blind-days').value = saved.hmBlind;
