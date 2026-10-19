@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from bisect import bisect_left, bisect_right
 
 from grid_analyzer.constants import STAMP_TAX, TRADING_DAYS
 from grid_analyzer.utils.finance import commission
@@ -303,9 +304,10 @@ def run_backtest(
             if p < prev:
                 # 下跌段：先处理止损线以上的买单，再触发止损
                 if stop_price is not None and p <= stop_price < prev:
-                    for i in range(len(buyable) - 1, -1, -1):
-                        lv = buyable[i]
-                        if stop_price < lv <= prev and i not in positions:
+                    hi = bisect_right(buyable, prev)
+                    lo = bisect_right(buyable, stop_price)
+                    for i in range(hi - 1, lo - 1, -1):
+                        if i not in positions:
                             do_buy(i, current_day)
                     liquidate(stop_price, current_day)
                     trading_stopped = True
@@ -314,18 +316,21 @@ def run_backtest(
                     stop_fill_price = stop_price
                     stopped_today = True
                     break
-                # 正常下跌：价格穿越的每个档位都可以买入，直至现金耗尽
-                for i in range(len(buyable) - 1, -1, -1):
-                    lv = buyable[i]
-                    if p <= lv <= prev and i not in positions:
+                # 正常下跌：只遍历本段实际穿越的档位
+                hi = bisect_right(buyable, prev)
+                lo = bisect_left(buyable, p)
+                for i in range(hi - 1, lo - 1, -1):
+                    if i not in positions:
                         do_buy(i, current_day)
             elif p > prev:
-                # 上涨段：卖出已持有且满足 T+1 的档位
-                for i in range(len(buyable)):
-                    target = levels[i + 1]
+                # 上涨段：只遍历本段实际穿越的卖价
+                hi = bisect_right(levels, p)
+                lo = bisect_right(levels, prev)
+                for j in range(lo, hi):
+                    i = j - 1
                     pos = positions.get(i)
-                    if pos and pos["buy_day"] < current_day and prev < target <= p:
-                        do_sell(i, target)
+                    if pos and pos["buy_day"] < current_day:
+                        do_sell(i, levels[j])
                 if base_lot and base_lot["buy_day"] < current_day:
                     target = base_lot["target"]
                     if prev < target <= p:
