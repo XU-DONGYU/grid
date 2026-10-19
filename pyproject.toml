@@ -52,7 +52,7 @@ pythonpath = ["."]
 addopts = "-q"
 
 [tool.coverage.run]
-source = ["app"]
+source = ["app", "grid_analyzer"]
 
 [tool.coverage.report]
 skip_empty = true

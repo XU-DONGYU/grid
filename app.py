@@ -6,7 +6,8 @@
 
 from __future__ import annotations
 
-import re
+import logging
+import time
 from pathlib import Path
 
 import requests
@@ -16,6 +17,7 @@ from fastapi.responses import HTMLResponse
 
 from grid_analyzer import __version__
 from grid_analyzer.backtest.engine import _empty_backtest, run_backtest
+from grid_analyzer.config import get_settings
 from grid_analyzer.constants import (
     AUX_GAP_CAP,
     BACKTEST_DAYS,
@@ -24,6 +26,7 @@ from grid_analyzer.constants import (
     STAMP_TAX,
     TRADING_DAYS,
 )
+from grid_analyzer.data.tencent import fetch_kline, fetch_quote, parse_code
 from grid_analyzer.grid.designer import build_grids
 from grid_analyzer.grid.spacing import design_grid
 from grid_analyzer.indicators.axis import compute_axis
@@ -36,6 +39,7 @@ from grid_analyzer.indicators.volatility import (
     compute_atr,
     compute_volatility,
 )
+from grid_analyzer.logging import configure_logging
 from grid_analyzer.risk.rules import collect_risks
 from grid_analyzer.utils.finance import commission, round_trip_cost_pct
 from grid_analyzer.utils.stats import ema, linreg_slope, percentile_rank
@@ -43,6 +47,8 @@ from grid_analyzer.utils.stats import ema, linreg_slope, percentile_rank
 __all__ = [
     "app",
     "analyze",
+    "health",
+    "version",
     "index",
     "parse_code",
     "fetch_quote",
@@ -73,99 +79,33 @@ __all__ = [
     "BACKTEST_DAYS",
 ]
 
+settings = get_settings()
+configure_logging(settings.log_level)
+logger = logging.getLogger("grid_analyzer.http")
+
 app = FastAPI(title="A股网格交易参数分析器", version=__version__)
 
 
 @app.middleware("http")
 async def add_no_cache_headers(request, call_next):
+    started = time.perf_counter()
     response = await call_next(request)
+    elapsed_ms = (time.perf_counter() - started) * 1000
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
+    logger.info("%s %s -> %s %.1fms", request.method, request.url.path, response.status_code, elapsed_ms)
     return response
 
-def parse_code(code: str) -> tuple[str, str]:
-    """识别市场前缀与6位代码。"""
-    code = (code or "").strip().lower()
-    m = re.match(r"^(sh|sz|bj)?(\d{6})$", code)
-    if not m:
-        raise HTTPException(400, "股票代码格式错误，请输入6位数字或带 sh/sz/bj 前缀，如 600000 / sz000001")
-    prefix, digits = m.group(1), m.group(2)
-    if not prefix:
-        if digits[0] in "659":
-            prefix = "sh"
-        elif digits[0] in "023":
-            prefix = "sz"
-        elif digits[0] in "48":
-            prefix = "bj"
-        else:
-            prefix = "sh"
-    return prefix, digits
 
-def fetch_quote(prefix: str, code: str) -> dict:
-    """腾讯实时行情。"""
-    url = f"https://qt.gtimg.cn/q={prefix}{code}"
-    resp = requests.get(url, timeout=10)
-    resp.encoding = "gbk"
-    m = re.search(r'="(.*)"', resp.text)
-    if not m or not m.group(1) or len(m.group(1).split("~")) < 50:
-        raise HTTPException(404, f"未获取到 {prefix}{code} 的行情，请确认代码是否正确")
-    parts = m.group(1).split("~")
+@app.get("/api/health")
+def health() -> dict:
+    return {"ok": True, "version": __version__, "env": settings.app_env}
 
-    def num(idx: int) -> float:
-        try:
-            return float(parts[idx] or 0)
-        except (ValueError, IndexError):
-            return 0.0
 
-    price = num(3)
-    if price <= 0:
-        raise HTTPException(404, f"未获取到 {prefix}{code} 的有效行情（可能已退市或停牌过久）")
-    total_mv = num(45)   # 总市值（亿）
-    float_mv = num(44)   # 流通市值（亿）
-    if total_mv <= 0:
-        total_mv = float_mv
-    return {
-        "name": parts[1],
-        "code": parts[2],
-        "price": price,
-        "prev_close": num(4),
-        "change": num(31),
-        "change_pct": num(32),
-        "high": num(33),
-        "low": num(34),
-        "amount_wan": num(37),      # 成交额（万元）
-        "turnover_pct": num(38),
-        "pe_ttm": num(39),
-        "amplitude_pct": num(43),
-        "total_mv": total_mv,
-        "float_mv": float_mv,
-        "bid": [{"p": num(9 + i * 2), "v": num(10 + i * 2)} for i in range(5)],
-        "ask": [{"p": num(19 + i * 2), "v": num(20 + i * 2)} for i in range(5)],
-    }
+@app.get("/api/version")
+def version() -> dict:
+    return {"version": __version__, "schema_version": 1}
 
-def fetch_kline(prefix: str, code: str, days: int = 250) -> list[dict]:
-    """腾讯前复权日K线（date, open, close, high, low, volume）。"""
-    url = f"https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={prefix}{code},day,,,{days},qfq"
-    resp = requests.get(url, timeout=10)
-    data = resp.json()
-    node = (data.get("data") or {}).get(f"{prefix}{code}") or {}
-    rows = node.get("qfqday") or node.get("day") or []
-    if not rows:
-        raise HTTPException(404, f"未获取到 {prefix}{code} 的历史K线数据")
-    result = []
-    for r in rows:
-        try:
-            result.append({
-                "date": r[0],
-                "open": float(r[1]),
-                "close": float(r[2]),
-                "high": float(r[3]),
-                "low": float(r[4]),
-                "volume": float(r[5] or 0),
-            })
-        except (ValueError, IndexError):
-            continue
-    return result
 
 @app.get("/api/analyze")
 def analyze(
@@ -306,4 +246,4 @@ def index():
     return {"message": "A股网格交易参数分析器后端运行中，请将 index.html 放在同目录"}
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=8000)
+    uvicorn.run("app:app", host=settings.host, port=settings.port)

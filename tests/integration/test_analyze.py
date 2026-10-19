@@ -91,6 +91,17 @@ def test_analyze_600000_snapshot(
     assert main["stop_date"] == "2026-05-07"
 
 
+def test_health_and_version(client: TestClient) -> None:
+    health = client.get("/api/health")
+    assert health.status_code == 200
+    assert health.json()["ok"] is True
+    assert health.json()["version"] == "2.1"
+
+    version = client.get("/api/version")
+    assert version.status_code == 200
+    assert version.json() == {"version": "2.1", "schema_version": 1}
+
+
 def test_root_serves_html(client: TestClient) -> None:
     response = client.get("/")
     assert response.status_code == 200

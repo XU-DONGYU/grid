@@ -34,6 +34,21 @@ make scan         # 隐私与密钥扫描
 make ci           # lint + typecheck + test + scan
 ```
 
+## 配置
+
+配置通过环境变量读取，默认值见 `.env.example`：
+
+```bash
+export APP_ENV=development
+export APP_HOST=127.0.0.1
+export APP_PORT=8000
+export QUOTE_CACHE_TTL_SECONDS=30
+export KLINE_CACHE_TTL_SECONDS=300
+export LOG_LEVEL=INFO
+```
+
+行情缓存默认使用进程内 TTL 缓存，不引入数据库。
+
 ## 测试
 
 ```bash
@@ -92,7 +107,13 @@ make scan
 ```bash
 sudo systemctl restart grid.service
 systemctl show -p MainPID --value grid.service
-curl -s http://127.0.0.1:8000/
+curl -s http://127.0.0.1:8000/api/health
+```
+
+健康检查返回：
+
+```json
+{"ok": true, "version": "2.1", "env": "development"}
 ```
 
 服务重启后 PID 会变化，这是正常现象。应以服务单元名和健康检查判断状态，而不是记旧 PID。

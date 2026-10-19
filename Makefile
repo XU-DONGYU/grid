@@ -18,7 +18,7 @@ run:
 	$(PYTHON) -m uvicorn app:app --host 0.0.0.0 --port 8000
 
 test:
-	$(PYTEST) --cov=app --cov-report=term-missing
+	$(PYTEST) --cov=app --cov=grid_analyzer --cov-report=term-missing
 
 lint:
 	$(RUFF) check .
@@ -27,7 +27,7 @@ format:
 	$(RUFF) format .
 
 typecheck:
-	$(MYPY) app.py
+	$(MYPY) app.py grid_analyzer
 
 scan:
 	$(PYTHON) scripts/scan_secrets.py
