@@ -16,12 +16,12 @@ A股网格交易参数分析器 · FastAPI 后端
 import math
 import re
 import statistics
+from pathlib import Path
 
 import requests
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from pathlib import Path
 
 app = FastAPI(title="A股网格交易参数分析器", version="2.1")
 
@@ -701,7 +701,7 @@ def run_backtest(klines: list[dict], grid: dict, fee_pct: float,
         update_high_water()
 
     for day_idx, k in enumerate(klines):
-        o, c, h, l = k["open"], k["close"], k["high"], k["low"]
+        o, c, h, low = k["open"], k["close"], k["high"], k["low"]
 
         if trading_stopped:
             if positions or base_lot:
@@ -731,9 +731,9 @@ def run_backtest(klines: list[dict], grid: dict, fee_pct: float,
 
         start = prev_close if prev_close is not None else o
         if c >= o:
-            path = [start, o, l, h, c]
+            path = [start, o, low, h, c]
         else:
-            path = [start, o, h, l, c]
+            path = [start, o, h, low, c]
 
         stopped_today = False
         for prev, p in zip(path, path[1:]):
