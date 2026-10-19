@@ -13,6 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from grid_analyzer.data.tencent import TencentMarketDataProvider  # noqa: E402
+from grid_analyzer.services.heatmap import write_heatmap  # noqa: E402
 from grid_analyzer.services.research import run_parameter_sweep  # noqa: E402
 
 
@@ -35,6 +36,8 @@ def main() -> int:
     parser.add_argument("--test-days", type=int, default=60)
     parser.add_argument("--step", type=int, default=60)
     parser.add_argument("--output", help="CSV 输出路径，默认 reports/sweep_<code>.csv")
+    parser.add_argument("--heatmap", help="HTML 热力图路径，默认与 CSV 同名 .html")
+    parser.add_argument("--heatmap-metric", default="plateau_score", help="热力图指标")
     args = parser.parse_args()
 
     provider = TencentMarketDataProvider()
@@ -78,6 +81,13 @@ def main() -> int:
         json.dumps([asdict(result) for result in results], ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    heatmap_output = Path(args.heatmap) if args.heatmap else output.with_suffix(".html")
+    write_heatmap(
+        results,
+        heatmap_output,
+        code=args.code,
+        metric=args.heatmap_metric,
+    )
 
     print(f"{quote['name']} {quote['code']} 当前价 {quote['price']:.2f}")
     print(f"数据 {len(klines)} 条，窗口 {args.calib_days}/{args.test_days}，步长 {args.step}")
@@ -95,6 +105,7 @@ def main() -> int:
         )
     print(f"CSV: {output}")
     print(f"JSON: {json_output}")
+    print(f"HTML: {heatmap_output}")
     return 0
 
 

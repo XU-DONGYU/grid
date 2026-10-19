@@ -81,7 +81,7 @@ make test
   --calib-days 250 --test-days 60 --step 60
 ```
 
-输出写入 `reports/`（已被 git 忽略）。扫描结果包含：
+输出写入 `reports/`（已被 git 忽略），同时生成自包含 HTML 热力图，默认路径为 `reports/sweep_<code>.html`。可用 `--heatmap-metric` 切换指标。扫描结果包含：
 
 - `mean_return_pct`：样本外平均收益
 - `worst_return_pct`：最差窗口收益
