@@ -10,7 +10,8 @@ from grid_analyzer.indicators.volatility import compute_volatility
 
 def build_grids(klines: list[dict], price: float, capital: float, single: bool,
                 main_ratio: float, spread_pct: float, fee_pct: float,
-                min_fee: float, history_closes: list[float] | None = None
+                min_fee: float, history_closes: list[float] | None = None,
+                gap_scale: float = 1.0
                 ) -> tuple[dict, dict, dict, dict]:
     """基于给定K线构建主/辅网格，返回 (主网格, 辅网格, 中轴, 波动率)。"""
     if not klines:
@@ -38,7 +39,7 @@ def build_grids(klines: list[dict], price: float, capital: float, single: bool,
     main_grid = design_grid(
         lower, upper, price, main_capital, sigma_daily,
         vol["atr_pct"], spread_pct, fee_pct, 1.2, 1.0, 0.70,
-        MAIN_GAP_CAP, min_fee,
+        MAIN_GAP_CAP, min_fee, gap_scale,
     )
 
     if single:
@@ -61,7 +62,7 @@ def build_grids(klines: list[dict], price: float, capital: float, single: bool,
             aux_grid = design_grid(
                 al, au, price, aux_capital, sigma_daily,
                 vol["atr_pct"], spread_pct, fee_pct, 1.0, 0.7, 0.55,
-                AUX_GAP_CAP, min_fee,
+                AUX_GAP_CAP, min_fee, gap_scale,
             )
         except HTTPException:
             aux_grid = {**main_grid, "capital": aux_capital, "shares_per_grid": 0,

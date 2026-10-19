@@ -57,6 +57,41 @@ make test
 
 测试使用 `tests/fixtures/` 下的离线行情，不依赖外网。`002541` 与 `600000` 作为固定特征测试样本。
 
+## 参数扫描与 Walk-forward
+
+单组参数滚动验证：
+
+```bash
+.venv/bin/python scripts/walk_forward.py \
+  --code 002541 \
+  --history-days 750 \
+  --calib-days 250 --test-days 60 --step 60 \
+  --gap-scale 1.0 --stop-loss 5 --init-position 0
+```
+
+参数扫描：
+
+```bash
+.venv/bin/python scripts/sweep.py \
+  --code 002541 \
+  --history-days 750 \
+  --gap-scales 0.8,0.9,1.0,1.1,1.2 \
+  --stop-losses 0,3,5,8 \
+  --init-positions 0,0.2 \
+  --calib-days 250 --test-days 60 --step 60
+```
+
+输出写入 `reports/`（已被 git 忽略）。扫描结果包含：
+
+- `mean_return_pct`：样本外平均收益
+- `worst_return_pct`：最差窗口收益
+- `compounded_return_pct`：样本外复利收益
+- `max_drawdown_pct`：最大单窗口回撤
+- `stop_count`：止损触发次数
+- `plateau_score = mean_return_pct - stdev_return_pct`：稳健性评分
+
+优先选择 `plateau_score` 高且相邻参数表现接近的“参数高原”，不要只取单点最高收益。
+
 ## 隐私与密钥
 
 提交前必须执行：
@@ -98,7 +133,9 @@ make scan
 ├─ pyproject.toml          # 依赖与工具配置
 ├─ Makefile
 ├─ scripts/
-│  └─ scan_secrets.py      # 隐私与密钥扫描
+│  ├─ scan_secrets.py      # 隐私与密钥扫描
+│  ├─ sweep.py             # 参数扫描 + Walk-forward
+│  └─ walk_forward.py      # 单组参数滚动验证
 ├─ tests/
 │  ├─ fixtures/            # 离线行情
 │  ├─ unit/                # 纯函数与回测不变量

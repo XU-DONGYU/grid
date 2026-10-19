@@ -109,3 +109,25 @@ def test_build_grids_dual_mode(fixture_002541: dict) -> None:
     assert main["shares_per_grid"] > 0
     assert aux["shares_per_grid"] > 0
     assert main["lower"] <= aux["lower"] <= aux["upper"] <= main["upper"]
+
+
+def test_gap_scale_widens_spacing() -> None:
+    common = dict(
+        lower=95,
+        upper=105,
+        price=100,
+        capital=1_000_000,
+        sigma_daily=0.015,
+        atr_pct=2.5,
+        spread_pct=0.05,
+        fee_pct=0.025,
+        gap_ratio=1.2,
+        sigma_mult=1.0,
+        atr_anchor=0.7,
+        gap_cap=0.08,
+        min_fee=5,
+    )
+    base = app.design_grid(**common, gap_scale=1.0)
+    wider = app.design_grid(**common, gap_scale=1.2)
+    assert wider["gap_pct"] > base["gap_pct"]
+    assert len(wider["levels"]) <= len(base["levels"])
