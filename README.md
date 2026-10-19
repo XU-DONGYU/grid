@@ -64,9 +64,16 @@ make scan
 
 ```text
 .
-├─ app.py                  # 当前入口，后续重构为兼容门面
+├─ app.py                  # FastAPI 兼容入口
 ├─ index.html              # 当前前端，后续拆分为静态模块
 ├─ file.md                 # 网格交易方法论文档
+├─ grid_analyzer/
+│  ├─ constants.py         # 全局常量
+│  ├─ utils/               # 费用与统计工具
+│  ├─ indicators/          # 中轴、波动率、趋势、评分、流动性
+│  ├─ grid/                # 间距与主/辅网格设计
+│  ├─ backtest/            # 事件驱动回测引擎
+│  └─ risk/                # 风险规则
 ├─ pyproject.toml          # 依赖与工具配置
 ├─ Makefile
 ├─ scripts/
