@@ -30,3 +30,8 @@ repos:
         entry: python3 scripts/scan_secrets.py --staged
         language: system
         pass_filenames: false
+      - id: product-docs-check
+        name: product docs check
+        entry: python3 scripts/check_product_docs.py
+        language: system
+        pass_filenames: false
