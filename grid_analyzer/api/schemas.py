@@ -298,6 +298,7 @@ class IntradayFold(ApiModel):
     in_sample_end: str
     oos_start: str
     oos_end: str
+    oos_days: int
     selected_k: float
     selected_stop_loss: float
     atr_pct: float

@@ -42,8 +42,8 @@ def intraday_k_values(start: float = 0.5, end: float = 1.5, step: float = 0.05) 
     while current <= end + 1e-9:
         values.append(round(current, 2))
         current += step
-    if len(values) != 21:
-        raise ValueError(f"默认 K 扫描应产生 21 个值，实际 {len(values)} 个")
+    if len(values) < 2:
+        raise ValueError("K 扫描至少需要两个值")
     return values
 
 
@@ -224,6 +224,7 @@ def run_intraday_validation(
                 "in_sample_end": in_days[-1],
                 "oos_start": oos_days_list[0],
                 "oos_end": oos_days_list[-1],
+                "oos_days": len(oos_days_list),
                 "selected_k": selected_k,
                 "selected_stop_loss": selected_stop,
                 "atr_pct": atr_pct,
@@ -236,6 +237,11 @@ def run_intraday_validation(
 
     if not fold_results:
         raise InsufficientIntradayDataError("滚动窗口没有产生有效结果")
+    actual_oos_days = sum(int(fold.get("oos_days", 0)) for fold in fold_results)
+    if actual_oos_days < config.min_oos_days:
+        raise InsufficientIntradayDataError(
+            f"样本外覆盖不足：需要 {config.min_oos_days} 个交易日，实际 {actual_oos_days} 个"
+        )
 
     cells = []
     for k_value in k_values:
@@ -315,8 +321,8 @@ def run_intraday_validation(
     ]
     summary = {
         "fold_count": len(fold_results),
-        "oos_coverage_days": oos_coverage_days,
-        "oos_coverage_months": oos_coverage_days / 21.0,
+        "oos_coverage_days": actual_oos_days,
+        "oos_coverage_months": actual_oos_days / 21.0,
         "positive_oos_ratio": sum(1 for value in oos_primary if value > 0) / len(oos_primary),
         "oos_primary_mean": statistics.mean(oos_primary),
         "oos_primary_worst": min(oos_primary),
