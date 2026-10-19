@@ -22,7 +22,7 @@
     <a href="#p-grid">网格参数</a>
     <a href="#p-chart">价格走势</a>
     <a href="#p-bt">历史回测</a>
-    <a href="#p-heatmap">参数热力图</a>
+    <a href="#p-heatmap">5分钟高原</a>
     <a href="#p-risk">风险提示</a>
   </nav>
 
@@ -112,35 +112,50 @@
     </div>
 
     <div class="panel" id="p-heatmap">
-      <div class="card-title"><span class="bar"></span>参数高原热力图</div>
+      <div class="card-title"><span class="bar"></span>5 分钟参数高原</div>
       <div class="heatmap-controls">
         <div class="field">
-          <label>评估指标</label>
+          <label>主评估指标</label>
           <select id="heatmap-metric">
-            <option value="plateau_score">稳健性评分</option>
-            <option value="mean_return_pct">平均收益</option>
-            <option value="compounded_return_pct">复利收益</option>
-            <option value="worst_return_pct">最差窗口</option>
+            <option value="realized_annual_pct">已实现网格年化</option>
+            <option value="total_annual_pct">总权益年化</option>
+            <option value="calmar">Calmar</option>
+            <option value="sharpe">Sharpe</option>
+            <option value="sortino">Sortino</option>
             <option value="max_drawdown_pct">最大回撤</option>
           </select>
         </div>
         <div class="field">
-          <label>格距缩放</label>
-          <input id="heatmap-gap-scales" type="text" value="0.8,0.9,1.0,1.1,1.2" title="逗号分隔的倍数">
+          <label>K 起点</label>
+          <input id="heatmap-k-start" type="number" value="0.5" min="0.1" max="2" step="0.05">
+        </div>
+        <div class="field">
+          <label>K 终点</label>
+          <input id="heatmap-k-end" type="number" value="1.5" min="0.2" max="3" step="0.05">
+        </div>
+        <div class="field">
+          <label>K 步长</label>
+          <input id="heatmap-k-step" type="number" value="0.05" min="0.01" max="0.5" step="0.01">
         </div>
         <div class="field">
           <label>破网止损 %</label>
           <input id="heatmap-stop-losses" type="text" value="0,3,5,8" title="逗号分隔的百分比">
         </div>
-        <div class="field">
-          <label>初始底仓 %</label>
-          <input id="heatmap-init-positions" type="text" value="0,20" title="逗号分隔的百分比">
-        </div>
-        <button id="heatmap-btn" class="secondary-btn">生成热力图</button>
+        <button id="heatmap-btn" class="secondary-btn">生成 5 分钟高原</button>
         <span id="heatmap-status" class="hint"></span>
       </div>
+      <details class="intraday-advanced">
+        <summary>高级窗口参数</summary>
+        <div class="heatmap-controls" style="margin-top:12px">
+          <div class="field"><label>窗口交易日</label><input id="heatmap-window-days" type="number" value="126" min="10" max="252" step="1"></div>
+          <div class="field"><label>样本内比例 %</label><input id="heatmap-in-sample-ratio" type="number" value="70" min="10" max="90" step="1"></div>
+          <div class="field"><label>最终盲测交易日</label><input id="heatmap-final-blind-days" type="number" value="63" min="0" max="252" step="1"></div>
+          <div class="field"><label>累计 OOS 交易日</label><input id="heatmap-min-oos-days" type="number" value="252" min="0" max="1000" step="1"></div>
+          <div class="field"><label>历史交易日</label><input id="heatmap-history-days" type="number" value="500" min="60" max="3000" step="10"></div>
+        </div>
+      </details>
       <div id="heatmap-wrap"></div>
-      <div class="note">基于当前股票、资金与佣金，使用最近约 250 日数据做 Walk-forward 参数扫描；横轴为格距缩放，纵轴为破网止损。格距、止损、初始底仓用逗号分隔；每个单元格为多个初始底仓参数的均值，颜色越绿表示该指标越优。</div>
+      <div class="note">5 分钟 K 线用于成交和验证，日线 ATR(14) 用于网格密度基准。每个窗口 6 个月（约 126 个交易日），前 70% 选参、后 30% 样本外；滚动步长等于样本外长度，累计样本外至少 12 个月；最后 3 个月为锁定参数盲测，完全不参与选参。初始底仓沿用上方“初始底仓 %”输入。</div>
     </div>
 
     <div class="panel" id="p-risk">

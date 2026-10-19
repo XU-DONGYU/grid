@@ -1,8 +1,8 @@
 import { $ } from './dom.js';
-import { analyzeMarket, fetchHeatmap } from './api.js';
+import { analyzeMarket, fetchIntradayHeatmap } from './api.js';
 import { render } from './render.js';
 import { toggleLayer } from './charts.js';
-import { renderHeatmap } from './heatmap.js';
+import { renderIntradayHeatmap } from './intraday_heatmap.js';
 
 const LS_KEY = 'grid_analyzer_input';
 
@@ -17,10 +17,16 @@ function saveInputs() {
       single: $('single').checked,
       initpos: $('initpos').value,
       stoploss: $('stoploss').value,
-      hmGap: $('heatmap-gap-scales').value,
+      hmKStart: $('heatmap-k-start').value,
+      hmKEnd: $('heatmap-k-end').value,
+      hmKStep: $('heatmap-k-step').value,
       hmStop: $('heatmap-stop-losses').value,
-      hmInit: $('heatmap-init-positions').value,
       hmMetric: $('heatmap-metric').value,
+      hmWindow: $('heatmap-window-days').value,
+      hmRatio: $('heatmap-in-sample-ratio').value,
+      hmBlind: $('heatmap-final-blind-days').value,
+      hmMinOos: $('heatmap-min-oos-days').value,
+      hmHistory: $('heatmap-history-days').value,
     }));
   } catch (e) {
     // localStorage may be unavailable in private mode.
@@ -43,10 +49,16 @@ function restoreInputs() {
     if (saved.single) $('single').checked = saved.single;
     if (saved.initpos !== undefined && saved.initpos !== '') $('initpos').value = saved.initpos;
     if (saved.stoploss !== undefined && saved.stoploss !== '') $('stoploss').value = saved.stoploss;
-    if (saved.hmGap !== undefined && saved.hmGap !== '') $('heatmap-gap-scales').value = saved.hmGap;
+    if (saved.hmKStart !== undefined && saved.hmKStart !== '') $('heatmap-k-start').value = saved.hmKStart;
+    if (saved.hmKEnd !== undefined && saved.hmKEnd !== '') $('heatmap-k-end').value = saved.hmKEnd;
+    if (saved.hmKStep !== undefined && saved.hmKStep !== '') $('heatmap-k-step').value = saved.hmKStep;
     if (saved.hmStop !== undefined && saved.hmStop !== '') $('heatmap-stop-losses').value = saved.hmStop;
-    if (saved.hmInit !== undefined && saved.hmInit !== '') $('heatmap-init-positions').value = saved.hmInit;
     if (saved.hmMetric) $('heatmap-metric').value = saved.hmMetric;
+    if (saved.hmWindow !== undefined && saved.hmWindow !== '') $('heatmap-window-days').value = saved.hmWindow;
+    if (saved.hmRatio !== undefined && saved.hmRatio !== '') $('heatmap-in-sample-ratio').value = saved.hmRatio;
+    if (saved.hmBlind !== undefined && saved.hmBlind !== '') $('heatmap-final-blind-days').value = saved.hmBlind;
+    if (saved.hmMinOos !== undefined && saved.hmMinOos !== '') $('heatmap-min-oos-days').value = saved.hmMinOos;
+    if (saved.hmHistory !== undefined && saved.hmHistory !== '') $('heatmap-history-days').value = saved.hmHistory;
     syncSingleUI();
   } catch (e) {
     // Ignore malformed or unavailable local storage.
@@ -110,42 +122,57 @@ async function generateHeatmap() {
   const fee = parseFloat($('fee').value) || 0;
   const minfee = Math.max(0, parseFloat($('minfee').value) || 0);
   const metric = $('heatmap-metric').value;
+  const initPosition = Math.min(100, Math.max(0, parseFloat($('initpos').value) || 0)) / 100;
 
-  let gapScales;
   let stopLosses;
-  let initPositions;
+  let kStart;
+  let kEnd;
+  let kStep;
   try {
-    gapScales = parseNumberList($('heatmap-gap-scales').value, '格距缩放');
     stopLosses = parseNumberList($('heatmap-stop-losses').value, '破网止损');
-    const initPct = parseNumberList($('heatmap-init-positions').value, '初始底仓');
-    if (gapScales.some(item => item <= 0)) throw new Error('格距缩放必须大于 0');
+    kStart = parseFloat($('heatmap-k-start').value);
+    kEnd = parseFloat($('heatmap-k-end').value);
+    kStep = parseFloat($('heatmap-k-step').value);
+    if ([kStart, kEnd, kStep].some(value => !Number.isFinite(value))) throw new Error('K 范围需要有效数字');
+    if (kStart <= 0 || kEnd <= kStart || kStep <= 0) throw new Error('K 范围必须满足 0 < 起点 < 终点，步长 > 0');
     if (stopLosses.some(item => item < 0)) throw new Error('破网止损不能为负');
-    if (initPct.some(item => item < 0 || item > 100)) throw new Error('初始底仓需在 0~100 之间');
-    initPositions = initPct.map(item => item / 100);
   } catch (e) {
     $('heatmap-status').textContent = e.message;
     return;
   }
 
+  const ratioPercent = Math.min(90, Math.max(10, parseFloat($('heatmap-in-sample-ratio').value) || 70));
+  const windowDays = Math.max(10, parseInt($('heatmap-window-days').value, 10) || 126);
+  const finalBlindDays = Math.max(0, parseInt($('heatmap-final-blind-days').value, 10) || 0);
+  const minOosDays = Math.max(0, parseInt($('heatmap-min-oos-days').value, 10) || 0);
+  const historyDays = Math.max(60, parseInt($('heatmap-history-days').value, 10) || 500);
+
   saveInputs();
   $('heatmap-btn').disabled = true;
-  $('heatmap-status').textContent = '正在计算参数热力图，请稍候…';
+  $('heatmap-status').textContent = '正在拉取数据并执行滚动验证，可能需要几十秒…';
+  $('heatmap-wrap').innerHTML = '';
   try {
-    const data = await fetchHeatmap({
+    const data = await fetchIntradayHeatmap({
       code,
       capital,
       fee,
-      minfee,
-      metric,
-      gapScales: gapScales.join(','),
-      stopLosses: stopLosses.join(','),
-      initPositions: initPositions.join(','),
+      min_fee: minfee,
+      init_position: initPosition,
+      stop_losses: stopLosses,
+      k_start: kStart,
+      k_end: kEnd,
+      k_step: kStep,
+      window_days: windowDays,
+      in_sample_ratio: ratioPercent / 100,
+      final_blind_days: finalBlindDays,
+      min_oos_days: minOosDays,
+      primary_metric: metric,
+      history_days: historyDays,
     });
-    renderHeatmap(data, $('heatmap-wrap'));
+    renderIntradayHeatmap(data, $('heatmap-wrap'));
     $('heatmap-status').textContent = '计算完成';
   } catch (e) {
     $('heatmap-status').textContent = e.message;
-    $('heatmap-wrap').innerHTML = '';
   } finally {
     $('heatmap-btn').disabled = false;
   }

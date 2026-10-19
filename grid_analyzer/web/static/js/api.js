@@ -1,7 +1,6 @@
 const SUPPORTED_SCHEMA_VERSION = 2;
 
-async function requestJson(url, fallbackMessage) {
-  const res = await fetch(url);
+async function parseResponse(res, fallbackMessage) {
   const json = await res.json();
   if (!res.ok || !json.ok) {
     let detail = json.detail;
@@ -25,28 +24,15 @@ export async function analyzeMarket({ code, capital, fee, minfee, ratio, initpos
     init_position: initpos,
     stop_loss: stoploss,
   });
-  return requestJson(`/api/analyze?${params.toString()}`, '分析失败，请稍后重试');
+  const res = await fetch(`/api/analyze?${params.toString()}`);
+  return parseResponse(res, '分析失败，请稍后重试');
 }
 
-export async function fetchHeatmap({
-  code,
-  capital,
-  fee,
-  minfee,
-  metric,
-  gapScales,
-  stopLosses,
-  initPositions,
-}) {
-  const params = new URLSearchParams({
-    code,
-    capital,
-    fee,
-    min_fee: minfee,
-    metric,
-    gap_scales: gapScales,
-    stop_losses: stopLosses,
-    init_positions: initPositions,
+export async function fetchIntradayHeatmap(payload) {
+  const res = await fetch('/api/intraday-heatmap', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
-  return requestJson(`/api/heatmap?${params.toString()}`, '热力图计算失败，请稍后重试');
+  return parseResponse(res, '5 分钟参数高原计算失败，请稍后重试');
 }
