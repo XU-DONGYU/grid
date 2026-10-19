@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "grid-analyzer"
-version = "2.1.0"
+dynamic = ["version"]
 description = "A-share grid trading parameter analyzer and backtester"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,6 +28,9 @@ dev = [
 
 [tool.setuptools]
 py-modules = ["app"]
+
+[tool.setuptools.dynamic]
+version = {attr = "grid_analyzer.__version__"}
 
 [tool.ruff]
 target-version = "py311"

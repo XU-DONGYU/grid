@@ -53,7 +53,7 @@
 返回：
 
 ```json
-{"ok": true, "version": "2.1", "env": "development"}
+{"ok": true, "version": "2.2.0", "env": "development"}
 ```
 
 ## GET /api/version
@@ -61,7 +61,7 @@
 返回：
 
 ```json
-{"version": "2.1", "schema_version": 1}
+{"version": "2.2.0", "schema_version": 1}
 ```
 
 ## 错误响应
