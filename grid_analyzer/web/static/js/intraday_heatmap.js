@@ -6,7 +6,7 @@ const METRICS = [
   ['calmar', 'Calmar', ''],
   ['sharpe', 'Sharpe', ''],
   ['sortino', 'Sortino', ''],
-  ['max_drawdown_pct', '最大回撤', '%'],
+  ['max_drawdown_pct', '最大回撤（越低越好）', '%'],
 ];
 
 const COLORS = ['#1a56db', '#c2700c', '#0a8a4a', '#8b5cf6', '#d93026', '#0891b2', '#6b7280'];
@@ -93,7 +93,10 @@ function lineChart(metric, label, unit, data, lockedK) {
   </div>`;
 }
 
+const PERCENT_METRICS = new Set(['realized_annual_pct', 'total_annual_pct', 'max_drawdown_pct']);
+
 function foldRows(data, primaryMetric) {
+  const primaryUnit = PERCENT_METRICS.has(primaryMetric) ? '%' : '';
   return data.folds.map((fold, index) => {
     const inValue = fold.in_sample_metrics?.[primaryMetric];
     const oosValue = fold.oos_metrics?.[primaryMetric];
@@ -103,8 +106,8 @@ function foldRows(data, primaryMetric) {
       <td>${fold.oos_start} ~ ${fold.oos_end}</td>
       <td class="num">${fmt(fold.selected_k, 2)}</td>
       <td class="num">${fmt(fold.selected_stop_loss, 1)}%</td>
-      <td class="num">${metricText(inValue, '')}</td>
-      <td class="num">${metricText(oosValue, '')}</td>
+      <td class="num">${metricText(inValue, primaryUnit)}</td>
+      <td class="num">${metricText(oosValue, primaryUnit)}</td>
       <td class="num">${metricText(fold.oos_metrics?.calmar, '')}</td>
       <td class="num">${metricText(fold.oos_metrics?.sharpe, '')}</td>
       <td class="num">${metricText(fold.oos_metrics?.max_drawdown_pct, '%')}</td>
@@ -140,6 +143,7 @@ export function renderIntradayHeatmap(data, container) {
   const context = data.context;
   const summary = data.summary;
   const primaryMetric = data.config?.primary_metric || 'realized_annual_pct';
+  const primaryUnit = PERCENT_METRICS.has(primaryMetric) ? '%' : '';
   const lockedK = data.locked?.k ?? data.k_values[0];
   const charts = METRICS.map(([key, label, unit]) => lineChart(key, label, unit, data, lockedK)).join('');
   const stability = data.parameter_stability;
@@ -158,8 +162,8 @@ export function renderIntradayHeatmap(data, container) {
       累计样本外 <b>${fmt(summary.oos_coverage_months, 1)} 个月</b> ·
       ${summary.fold_count} 个窗口 ·
       正收益窗口 <b>${fmt(summary.positive_oos_ratio * 100, 0)}%</b> ·
-      主指标均值 <b>${metricText(summary.oos_primary_mean, '')}</b> ·
-      最差 <b>${metricText(summary.oos_primary_worst, '')}</b>
+      主指标均值 <b>${metricText(summary.oos_primary_mean, primaryUnit)}</b> ·
+      最差 <b>${metricText(summary.oos_primary_worst, primaryUnit)}</b>
     </div>
     <div class="intraday-grid">${charts}</div>
     <details class="intraday-details" open>
