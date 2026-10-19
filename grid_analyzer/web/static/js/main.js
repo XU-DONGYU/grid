@@ -1,5 +1,5 @@
 import { $ } from './dom.js';
-import { analyzeMarket, fetchIntradayHeatmap } from './api.js';
+import { analyzeMarket, createIntradayHeatmapJob, fetchIntradayHeatmapJob } from './api.js';
 import { render } from './render.js';
 import { toggleLayer } from './charts.js';
 import { renderIntradayHeatmap } from './intraday_heatmap.js';
@@ -152,10 +152,10 @@ async function generateHeatmap() {
 
   saveInputs();
   $('heatmap-btn').disabled = true;
-  $('heatmap-status').textContent = '正在拉取数据并执行滚动验证，可能需要几十秒…';
+  $('heatmap-status').textContent = '任务已提交，正在拉取数据…';
   $('heatmap-wrap').innerHTML = '';
   try {
-    const data = await fetchIntradayHeatmap({
+    const job = await createIntradayHeatmapJob({
       code,
       capital,
       fee,
@@ -172,13 +172,31 @@ async function generateHeatmap() {
       primary_metric: metric,
       history_days: historyDays,
     });
-    renderIntradayHeatmap(data, $('heatmap-wrap'));
-    $('heatmap-status').textContent = '计算完成';
+    const started = Date.now();
+    while (true) {
+      await sleep(2000);
+      const status = await fetchIntradayHeatmapJob(job.job_id);
+      const elapsed = Math.round((Date.now() - started) / 1000);
+      if (status.status === 'completed') {
+        renderIntradayHeatmap(status.result, $('heatmap-wrap'));
+        $('heatmap-status').textContent = `计算完成（${elapsed}s）`;
+        break;
+      }
+      if (status.status === 'failed') {
+        throw new Error(status.error || '计算失败');
+      }
+      $('heatmap-status').textContent = `计算中… 已等待 ${elapsed}s`;
+      if (elapsed > 300) throw new Error('计算超时，请稍后重试或缩小参数范围');
+    }
   } catch (e) {
     $('heatmap-status').textContent = e.message;
   } finally {
     $('heatmap-btn').disabled = false;
   }
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function initToc() {

@@ -137,3 +137,39 @@ def test_intraday_heatmap_rejects_empty_stop_losses(intraday_client: TestClient)
         json={"code": "002541", "stop_losses": []},
     )
     assert response.status_code == 422
+
+
+def test_intraday_heatmap_job_contract(intraday_client: TestClient) -> None:
+    import time
+
+    response = intraday_client.post(
+        "/api/intraday-heatmap/jobs",
+        json={
+            "code": "002541",
+            "capital": 1_000_000,
+            "stop_losses": [0],
+            "window_days": 10,
+            "in_sample_ratio": 0.7,
+            "final_blind_days": 3,
+            "min_oos_days": 0,
+            "history_days": 60,
+        },
+    )
+    assert response.status_code == 200
+    job = response.json()
+    assert job["schema_version"] == 2
+    job_id = job["data"]["job_id"]
+    assert job_id
+
+    deadline = time.time() + 30
+    status = None
+    while time.time() < deadline:
+        poll = intraday_client.get(f"/api/intraday-heatmap/jobs/{job_id}")
+        assert poll.status_code == 200
+        status = poll.json()["data"]
+        if status["status"] in {"completed", "failed"}:
+            break
+        time.sleep(0.1)
+    assert status is not None
+    assert status["status"] == "completed", status
+    assert status["result"]["k_values"]

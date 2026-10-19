@@ -3,7 +3,7 @@
 - `doc_version`: 0.2.0
 - `last_updated`: 2026-10-19
 - `related_code`: `grid_analyzer/services/intraday_heatmap.py`, `grid_analyzer/services/intraday_research.py`, `grid_analyzer/data/intraday.py`, `grid_analyzer/backtest/engine.py`, `grid_analyzer/backtest/metrics.py`
-- `related_api`: `POST /api/intraday-heatmap`
+- `related_api`: `POST /api/intraday-heatmap/jobs`, `GET /api/intraday-heatmap/jobs/{job_id}`
 - `related_tests`: `tests/unit/test_intraday_backtest.py`, `tests/unit/test_intraday_cache.py`, `tests/unit/test_intraday_research.py`, `tests/unit/test_metrics.py`, `tests/integration/test_intraday_heatmap.py`
 
 ## 1. 产品目标与非目标
@@ -171,7 +171,7 @@ target_gap = K × 日线 ATR(14)%
 
 ## 8. API 契约
 
-接口：`POST /api/intraday-heatmap`。
+接口：`POST /api/intraday-heatmap/jobs` 创建后台任务，`GET /api/intraday-heatmap/jobs/{job_id}` 轮询状态。同步接口 `POST /api/intraday-heatmap` 保留给短参数和命令行调用。
 
 响应顶层包含：
 
@@ -198,9 +198,9 @@ target_gap = K × 日线 ATR(14)%
 
 1. 用户输入股票代码和当前分析参数。
 2. 点击“生成 5 分钟参数高原”。
-3. 前端显示加载状态和已处理窗口数。
+3. 前端创建后台任务并显示已等待时间。
 4. 后端读取缓存，缺失数据从 BaoStock 补拉。
-5. 返回样本内、滚动样本外和最终盲测结果。
+5. 前端轮询任务状态，完成后展示样本内、滚动样本外和最终盲测结果。
 6. 前端渲染小多图、表格和风险提示。
 7. 失败时显示明确错误，不展示部分伪造结果。
 

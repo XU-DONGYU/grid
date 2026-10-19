@@ -358,3 +358,29 @@ class IntradayHeatmapResponse(ApiModel):
     ok: bool = True
     schema_version: int = SCHEMA_VERSION
     data: IntradayHeatmapData
+
+
+class IntradayJobCreateData(ApiModel):
+    job_id: str
+    status: str
+
+
+class IntradayJobCreateResponse(ApiModel):
+    ok: bool = True
+    schema_version: int = SCHEMA_VERSION
+    data: IntradayJobCreateData
+
+
+class IntradayJobStatusData(ApiModel):
+    job_id: str
+    status: str
+    error: str | None = None
+    result: IntradayHeatmapData | None = None
+    created_at: str
+    updated_at: str
+
+
+class IntradayJobStatusResponse(ApiModel):
+    ok: bool = True
+    schema_version: int = SCHEMA_VERSION
+    data: IntradayJobStatusData

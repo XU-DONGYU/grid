@@ -8,6 +8,7 @@
 - API schema_version 升级到 2。
 - 前端新增 5 分钟参数高原面板：小多图、滚动 OOS 表、参数稳定性和最终盲测。
 - 新增 `scripts/intraday_heatmap.py` 命令行研究工具，输出 JSON/CSV。
+- 5 分钟热力图改为后台任务 + 轮询，避免长请求被代理超时。
 
 ## 2.2.0
 

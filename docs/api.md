@@ -115,6 +115,29 @@
 
 该接口计算量较大，当前为同步调用；后续可按性能情况改为后台任务。
 
+## POST /api/intraday-heatmap/jobs
+
+创建 5 分钟参数高原后台任务。请求体与 `/api/intraday-heatmap` 相同。
+
+响应：
+
+```json
+{"ok": true, "schema_version": 2, "data": {"job_id": "...", "status": "queued"}}
+```
+
+## GET /api/intraday-heatmap/jobs/{job_id}
+
+查询任务状态：
+
+- `queued`
+- `running`
+- `completed`
+- `failed`
+
+完成后 `data.result` 为完整的 `IntradayHeatmapData`；失败时 `data.error` 包含错误信息。
+
+前端使用该任务接口，避免长请求被反向代理超时截断。同步接口 `/api/intraday-heatmap` 仍保留，适合短参数或命令行调用。
+
 ## GET /api/health
 
 返回：

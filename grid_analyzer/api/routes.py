@@ -15,6 +15,10 @@ from grid_analyzer.api.schemas import (
     IntradayHeatmapData,
     IntradayHeatmapRequest,
     IntradayHeatmapResponse,
+    IntradayJobCreateData,
+    IntradayJobCreateResponse,
+    IntradayJobStatusData,
+    IntradayJobStatusResponse,
     VersionResponse,
 )
 from grid_analyzer.config import get_settings
@@ -26,6 +30,7 @@ from grid_analyzer.services.analysis import AnalysisService
 from grid_analyzer.services.heatmap import build_heatmap_payload
 from grid_analyzer.services.intraday_heatmap import IntradayHeatmapService
 from grid_analyzer.services.intraday_research import InsufficientIntradayDataError
+from grid_analyzer.services.jobs import job_manager
 from grid_analyzer.services.research import run_parameter_sweep
 
 router = APIRouter()
@@ -166,3 +171,36 @@ def intraday_heatmap(
     except ValueError as exc:
         raise HTTPException(400, str(exc))
     return IntradayHeatmapResponse(data=IntradayHeatmapData.model_validate(data))
+
+
+@router.post("/api/intraday-heatmap/jobs", response_model=IntradayJobCreateResponse)
+def create_intraday_heatmap_job(
+    request: IntradayHeatmapRequest,
+    repository: IntradayRepository = Depends(get_intraday_repository),
+    quote_provider: MarketDataProvider = Depends(get_market_data_provider),
+) -> IntradayJobCreateResponse:
+    service = IntradayHeatmapService(repository, quote_provider)
+    job_id = job_manager.submit(service.run, request)
+    return IntradayJobCreateResponse(
+        data=IntradayJobCreateData(job_id=job_id, status="queued")
+    )
+
+
+@router.get(
+    "/api/intraday-heatmap/jobs/{job_id}",
+    response_model=IntradayJobStatusResponse,
+)
+def get_intraday_heatmap_job(job_id: str) -> IntradayJobStatusResponse:
+    job = job_manager.get(job_id)
+    if job is None:
+        raise HTTPException(404, "任务不存在或已过期")
+    return IntradayJobStatusResponse(
+        data=IntradayJobStatusData(
+            job_id=job["job_id"],
+            status=job["status"],
+            error=job["error"],
+            result=job["result"],
+            created_at=job["created_at"],
+            updated_at=job["updated_at"],
+        )
+    )
