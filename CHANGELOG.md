@@ -7,6 +7,7 @@
 - 新增已实现年化、Calmar、Sharpe、Sortino、最大回撤等指标。
 - API schema_version 升级到 2。
 - 前端新增 5 分钟参数高原面板：小多图、滚动 OOS 表、参数稳定性和最终盲测。
+- 新增 `scripts/intraday_heatmap.py` 命令行研究工具，输出 JSON/CSV。
 
 ## 2.2.0
 

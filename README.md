@@ -87,6 +87,14 @@ make test
 
 以上是日线研究工具。网页端的“5 分钟参数高原”面板是另一套 5 分钟验证流程：BaoStock 5 分钟数据、日线 ATR(14)、6 个月窗口、70/30 样本内外、滚动 OOS 和最终 3 个月锁定盲测。首次使用需要安装 BaoStock 依赖。
 
+命令行版本：
+
+```bash
+.venv/bin/python scripts/intraday_heatmap.py --code 002541
+```
+
+默认输出 `reports/intraday_002541.json`、`_folds.csv` 和 `_cells.csv`。
+
 扫描结果包含：
 
 - `mean_return_pct`：样本外平均收益
