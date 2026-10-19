@@ -98,6 +98,7 @@ make test
 - 本地一键检查：`make ci`。
 - 提交钩子：`.pre-commit-config.yaml`。
 - 架构与方法论：`docs/architecture.md`、`docs/methodology.md`。
+- API 契约：`docs/api.md`。
 - 架构决策：`docs/adr/`。
 - 部署示例：`deploy/grid.service.example`。
 

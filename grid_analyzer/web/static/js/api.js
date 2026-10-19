@@ -1,3 +1,5 @@
+const SUPPORTED_SCHEMA_VERSION = 1;
+
 export async function analyzeMarket({ code, capital, fee, minfee, ratio, initpos, stoploss }) {
   const params = new URLSearchParams({
     code,
@@ -15,6 +17,9 @@ export async function analyzeMarket({ code, capital, fee, minfee, ratio, initpos
     if (Array.isArray(detail)) detail = detail.map(x => x.msg).join('；');
     if (typeof detail !== 'string') detail = String(detail || '分析失败，请稍后重试');
     throw new Error(detail);
+  }
+  if (json.schema_version !== SUPPORTED_SCHEMA_VERSION) {
+    throw new Error(`后端 API schema v${json.schema_version} 与前端 v${SUPPORTED_SCHEMA_VERSION} 不兼容`);
   }
   return json.data;
 }

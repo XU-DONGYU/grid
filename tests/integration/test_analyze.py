@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from grid_analyzer.api.routes import get_market_data_provider
+from grid_analyzer.api.schemas import AnalyzeResponse
 from grid_analyzer.main import app
 
 
@@ -54,7 +55,11 @@ def get_analysis(client: TestClient, code: str) -> dict:
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    return body["data"]
+    assert body["schema_version"] == 1
+    contract = AnalyzeResponse.model_validate(body)
+    assert contract.schema_version == 1
+    assert contract.data.version == "2.1"
+    return contract.data.model_dump()
 
 
 def test_analyze_002541_snapshot(client_for: Any, fixture_002541: dict) -> None:

@@ -3,7 +3,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query
 
 from grid_analyzer import __version__
+from grid_analyzer.api.schemas import (
+    AnalyzeData,
+    AnalyzeResponse,
+    HealthResponse,
+    VersionResponse,
+)
 from grid_analyzer.config import get_settings
+from grid_analyzer.constants import SCHEMA_VERSION
 from grid_analyzer.data.base import MarketDataProvider
 from grid_analyzer.data.tencent import TencentMarketDataProvider
 from grid_analyzer.services.analysis import AnalysisService
@@ -21,17 +28,17 @@ def get_analysis_service(
     return AnalysisService(provider)
 
 
-@router.get("/api/health")
-def health() -> dict:
-    return {"ok": True, "version": __version__, "env": get_settings().app_env}
+@router.get("/api/health", response_model=HealthResponse)
+def health() -> HealthResponse:
+    return HealthResponse(ok=True, version=__version__, env=get_settings().app_env)
 
 
-@router.get("/api/version")
-def version() -> dict:
-    return {"version": __version__, "schema_version": 1}
+@router.get("/api/version", response_model=VersionResponse)
+def version() -> VersionResponse:
+    return VersionResponse(version=__version__, schema_version=SCHEMA_VERSION)
 
 
-@router.get("/api/analyze")
+@router.get("/api/analyze", response_model=AnalyzeResponse)
 def analyze(
     code: str = Query(..., description="股票代码，如 600000 / sz000001"),
     capital: float = Query(100000, ge=1000, le=1e8, description="总资金（元）"),
@@ -41,7 +48,7 @@ def analyze(
     init_position: float = Query(0.0, ge=0, le=1.0, description="初始底仓占总资金比例，0=中性零底仓"),
     stop_loss: float = Query(5.0, ge=0, le=50, description="跌破网格下限后的清仓止损幅度（%），0=关闭"),
     service: AnalysisService = Depends(get_analysis_service),
-) -> dict:
+) -> AnalyzeResponse:
     data = service.analyze(
         code=code,
         capital=capital,
@@ -51,4 +58,4 @@ def analyze(
         init_position=init_position,
         stop_loss=stop_loss,
     )
-    return {"ok": True, "data": data}
+    return AnalyzeResponse(data=AnalyzeData.model_validate(data))
