@@ -13,3 +13,17 @@ __all__ = [
     "fetch_quote",
     "parse_code",
 ]
+
+from grid_analyzer.data.intraday import (
+    BaoStockProvider,
+    IntradayRepository,
+    NoDataError,
+    normalize_baostock_code,
+)
+
+__all__ += [
+    "BaoStockProvider",
+    "IntradayRepository",
+    "NoDataError",
+    "normalize_baostock_code",
+]

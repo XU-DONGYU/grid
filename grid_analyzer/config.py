@@ -27,6 +27,8 @@ class Settings:
     request_timeout: float = 10.0
     quote_cache_ttl: int = 30
     kline_cache_ttl: int = 300
+    intraday_cache_path: str = ".cache/intraday.sqlite3"
+    baostock_adjustflag: str = "2"
     log_level: str = "INFO"
 
     @classmethod
@@ -38,6 +40,8 @@ class Settings:
             request_timeout=_env_float("REQUEST_TIMEOUT_SECONDS", 10.0),
             quote_cache_ttl=_env_int("QUOTE_CACHE_TTL_SECONDS", 30),
             kline_cache_ttl=_env_int("KLINE_CACHE_TTL_SECONDS", 300),
+            intraday_cache_path=os.getenv("INTRADAY_CACHE_PATH", ".cache/intraday.sqlite3"),
+            baostock_adjustflag=os.getenv("BAOSTOCK_ADJUSTFLAG", "2"),
             log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
         )
 
