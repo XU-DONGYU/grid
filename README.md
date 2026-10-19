@@ -172,7 +172,7 @@ make scan
 
 ## 部署
 
-当前使用 systemd 服务 `grid.service`。可参考 `deploy/grid.service.example`，把 `/path/to/grid` 替换为实际目录，并建议使用独立运行用户与 `.env` 环境文件。更新代码后执行：
+当前使用 systemd 服务 `grid.service`。可参考 `deploy/grid.service.example`，把 `/path/to/grid` 替换为实际目录，并建议使用独立运行用户与 `.env` 环境文件。部署时请使用项目虚拟环境中的 uvicorn，避免系统 Python 缺少 BaoStock/pandas 等依赖。更新代码后执行：
 
 ```bash
 sudo systemctl restart grid.service
