@@ -38,6 +38,7 @@ function saveInputs() {
       plKEnd: $('plateau-k-end').value,
       plKStep: $('plateau-k-step').value,
       plGridAmount: $('plateau-grid-amount').value,
+      plMaxPositions: $('plateau-max-positions').value,
       plWindow: $('plateau-window').value,
       plSpread: $('plateau-spread').value,
       plIslandRatio: $('plateau-island-ratio').value,
@@ -86,6 +87,7 @@ function restoreInputs() {
     if (saved.plKEnd !== undefined && saved.plKEnd !== '') $('plateau-k-end').value = saved.plKEnd;
     if (saved.plKStep !== undefined && saved.plKStep !== '') $('plateau-k-step').value = saved.plKStep;
     if (saved.plGridAmount !== undefined && saved.plGridAmount !== '') $('plateau-grid-amount').value = saved.plGridAmount;
+    if (saved.plMaxPositions !== undefined && saved.plMaxPositions !== '') $('plateau-max-positions').value = saved.plMaxPositions;
     if (saved.plWindow !== undefined && saved.plWindow !== '') $('plateau-window').value = saved.plWindow;
     if (saved.plSpread !== undefined && saved.plSpread !== '') $('plateau-spread').value = saved.plSpread;
     if (saved.plIslandRatio !== undefined && saved.plIslandRatio !== '') $('plateau-island-ratio').value = saved.plIslandRatio;
@@ -233,6 +235,7 @@ async function generatePlateau() {
   const fee = parseFloat($('fee').value) || 0;
   const minfee = Math.max(0, parseFloat($('minfee').value) || 0);
   const gridAmount = Math.max(100, parseFloat($('plateau-grid-amount').value) || 10000);
+  const maxPositions = Math.min(50, Math.max(1, parseInt($('plateau-max-positions').value, 10) || 8));
   const spread = Math.max(0, parseFloat($('plateau-spread').value) || 0);
   const islandRatio = Math.max(0, parseFloat($('plateau-island-ratio').value) || 0.25);
   const frontRunOffset = Math.max(0, parseFloat($('plateau-front-run-offset').value) || 0.2);
@@ -258,6 +261,7 @@ async function generatePlateau() {
     const data = await fetchPlateau({
       code,
       grid_amount: gridAmount,
+      max_positions: maxPositions,
       fee,
       min_fee: minfee,
       spread_pct: spread,

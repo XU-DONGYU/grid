@@ -389,6 +389,7 @@ class IntradayJobStatusResponse(ApiModel):
 class PlateauRequest(ApiModel):
     code: str
     grid_amount: float = Field(10_000, ge=100, le=1e8)
+    max_positions: int = Field(8, ge=1, le=50)
     fee: float = Field(0.025, ge=0, le=0.3)
     min_fee: float = Field(5.0, ge=0, le=100)
     spread_pct: float = Field(0.05, ge=0, le=5)
@@ -439,6 +440,16 @@ class PlateauPoint(ApiModel):
     open_position_pnl_pct: float
     total_return_pct: float
     max_open_loss_pct: float
+    risk_adjusted_return_pct: float
+    capital_return_pct: float
+    used_capital_return_pct: float
+    capital_utilization_pct: float
+    max_positions: int
+    max_positions_used: int
+    avg_positions: float
+    open_position_count: int
+    net_profit_yuan: float
+    open_position_pnl_yuan: float
     below_safe: bool
     is_island: bool
     in_plateau: bool
@@ -470,6 +481,9 @@ class PlateauBand(ApiModel):
     k_star_loops: int
     k_star_open_position_pnl_pct: float
     k_star_total_return_pct: float
+    k_star_capital_return_pct: float
+    k_star_max_positions_used: int
+    k_star_open_position_count: int
     profitable: bool
 
 
@@ -528,6 +542,8 @@ class PlateauSummary(ApiModel):
     mean_atr_pct: float
     friction_pct: float
     k_min_safe: float
+    max_positions: int
+    grid_capital: float
     forbidden_k_count: int
     all_forbidden: bool
     island_count: int
@@ -535,6 +551,8 @@ class PlateauSummary(ApiModel):
     positive_plateau: bool
     raw_best_k: float
     raw_best_net_return_pct: float
+    best_inside_forbidden: bool
+    plateau_at_safe_boundary: bool
     live_unavailable_reason: str | None = None
     sample_note: str
 
@@ -549,6 +567,8 @@ class PlateauContext(ApiModel):
     latest_atr: float
     latest_atr_pct: float
     grid_amount: float
+    max_positions: int
+    grid_capital: float
     fee: float
     min_fee: float
     spread_pct: float

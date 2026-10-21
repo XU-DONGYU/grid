@@ -148,6 +148,7 @@
 |---|---|---|
 | `code` | 必填 | 股票代码 |
 | `grid_amount` | `10000` | 单格固定投入金额 M |
+| `max_positions` | `8` | 最大同时持仓槽位；网格资金 = M × 该值 |
 | `fee` | `0.025` | 单边佣金 % |
 | `min_fee` | `5` | 单笔最低佣金 |
 | `spread_pct` | `0.05` | 买卖价差代理 % |
@@ -170,22 +171,24 @@
 
 - `context`：最新 ATR、价格、数据区间、摩擦、安全底线
 - `k_values`：扫描的 k 列表
-- `curve`：每个 k 的 `net_return_pct`、`annualized_net_return_pct`、`loops`、`open_position_pnl_pct`、`below_safe`、`is_island`、`in_plateau`、`is_optimal` 等
+- `curve`：每个 k 的 `net_return_pct`、`capital_return_pct`、`used_capital_return_pct`、`risk_adjusted_return_pct`、`annualized_net_return_pct`、`loops`、`max_positions_used`、`capital_utilization_pct`、`open_position_pnl_pct`、`open_position_count`、`below_safe`、`is_island`、`in_plateau`、`is_optimal` 等
 - `islands`：被剔除的孤岛点及左右跌幅
-- `plateau`：实测高原 `[k_left, k_right]`、`k_star`、均值、标准差、评分
+- `plateau`：实测高原 `[k_left, k_right]`、`k_star`、均值、标准差、评分、k* 占网格资金收益和最大持仓
 - `prior_validation`：与 `0.65–0.80 × ATR%` 先验带的重合关系
 - `live`：`d_raw_pct`、`d_exec_pct`、`k_exec`、整数关口修正、拐点触发参数
-- `summary`：k 数量、交易日数、摩擦、`k_min_safe`、孤岛数、样本内提示
+- `summary`：k 数量、交易日数、摩擦、`k_min_safe`、最大槽位、网格资金、孤岛数、原始最优是否落在禁区、合规高原是否贴近安全底线、样本内提示
 - `config` / `data_snapshot`：本次参数和数据快照
 
 该接口为同步调用，计算量远小于 5 分钟滚动 OOS；数据有效但找不到连续高原时返回 200 与 `plateau=null`，由前端展示原因；完全没有可用数据时返回 400/404。
+
+撮合模型为每日以前一交易日收盘价重新锚定的滚动阶梯网格，最多持有 `max_positions` 个单格资金槽位，按格线价成交，卖出受 T+1 约束。`net_return_pct` 是单格累计收益，`capital_return_pct` 是占网格总资金的收益。
 
 ## GET /api/health
 
 返回：
 
 ```json
-{"ok": true, "version": "2.4.0", "env": "development"}
+{"ok": true, "version": "2.4.1", "env": "development"}
 ```
 
 ## GET /api/version
@@ -193,7 +196,7 @@
 返回：
 
 ```json
-{"version": "2.4.0", "schema_version": 2}
+{"version": "2.4.1", "schema_version": 2}
 ```
 
 ## 错误响应

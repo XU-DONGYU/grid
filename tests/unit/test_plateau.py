@@ -99,18 +99,26 @@ def test_day_step_uses_only_prior_atr() -> None:
     dynamic = _build_day_steps(atr_series, days, PlateauConfig(mode="dynamic"), 1.0)
     assert "2025-01-02" not in dynamic
     assert dynamic["2025-01-03"].atr_pct == pytest.approx(2.0)
+    assert dynamic["2025-01-03"].anchor == pytest.approx(100.0)
     assert dynamic["2025-01-04"].atr_pct == pytest.approx(10.0)
+    assert dynamic["2025-01-04"].anchor == pytest.approx(100.0)
 
     static = _build_day_steps(atr_series, days, PlateauConfig(mode="static_mean"), 1.0)
     assert static["2025-01-03"].step_pct == pytest.approx(2.0)
+    assert static["2025-01-03"].step_abs == pytest.approx(2.0)
     assert static["2025-01-04"].step_pct == pytest.approx(6.0)
+    assert static["2025-01-04"].step_abs == pytest.approx(6.0)
+
+
+def step(day: str, step_abs: float, anchor: float = 100.0) -> _DayStep:
+    return _DayStep(day, step_pct=step_abs, step_abs=step_abs, atr_pct=step_abs, anchor=anchor)
 
 
 def test_step_trigger_buys_after_crossing_and_respects_t_plus_one() -> None:
     day_steps = {
-        "2025-01-02": _DayStep("2025-01-02", step_pct=2.0, step_abs=2.0, atr_pct=2.0),
-        "2025-01-03": _DayStep("2025-01-03", step_pct=2.0, step_abs=2.0, atr_pct=2.0),
-        "2025-01-04": _DayStep("2025-01-04", step_pct=2.0, step_abs=2.0, atr_pct=2.0),
+        "2025-01-02": step("2025-01-02", 2.0),
+        "2025-01-03": step("2025-01-03", 2.0),
+        "2025-01-04": step("2025-01-04", 2.0),
     }
     bars_by_day = {
         "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 101, 99)],
@@ -124,14 +132,15 @@ def test_step_trigger_buys_after_crossing_and_respects_t_plus_one() -> None:
         friction_pct=0.1,
     )
     assert result["loops"] == 1
-    assert result["open_position"] is None
+    assert result["open_position_count"] == 0
     assert result["net_return_pct"] == pytest.approx((100 / 98 - 1) * 100 - 0.1)
+    assert result["max_positions_used"] == 1
 
 
 def test_one_cent_short_of_grid_line_does_not_fill() -> None:
     day_steps = {
-        "2025-01-02": _DayStep("2025-01-02", step_pct=2.0, step_abs=2.0, atr_pct=2.0),
-        "2025-01-03": _DayStep("2025-01-03", step_pct=2.0, step_abs=2.0, atr_pct=2.0),
+        "2025-01-02": step("2025-01-02", 2.0),
+        "2025-01-03": step("2025-01-03", 2.0),
     }
     bars_by_day = {
         "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 101, 98.01)],
@@ -144,13 +153,13 @@ def test_one_cent_short_of_grid_line_does_not_fill() -> None:
         friction_pct=0.1,
     )
     assert result["loops"] == 0
-    assert result["open_position"] is None
+    assert result["open_position_count"] == 0
 
 
 def test_static_mode_uses_percentage_step() -> None:
     day_steps = {
-        "2025-01-02": _DayStep("2025-01-02", step_pct=2.0, step_abs=0.0, atr_pct=2.0),
-        "2025-01-03": _DayStep("2025-01-03", step_pct=2.0, step_abs=0.0, atr_pct=2.0),
+        "2025-01-02": step("2025-01-02", 2.0),
+        "2025-01-03": step("2025-01-03", 2.0),
     }
     bars_by_day = {
         "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 101, 97.9)],
@@ -164,6 +173,31 @@ def test_static_mode_uses_percentage_step() -> None:
     )
     assert result["loops"] == 1
     assert result["net_return_pct"] == pytest.approx((100 / 98 - 1) * 100 - 0.1)
+
+
+def test_rolling_ladder_rearms_in_a_trend_and_caps_positions() -> None:
+    day_steps = {
+        "2025-01-02": step("2025-01-02", 2.0, 100.0),
+        "2025-01-03": step("2025-01-03", 2.0, 102.0),
+        "2025-01-04": step("2025-01-04", 2.0, 104.0),
+        "2025-01-05": step("2025-01-05", 2.0, 106.0),
+    }
+    bars_by_day = {
+        "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 100, 95)],
+        "2025-01-03": [bar("2025-01-03", "09:35", 102, 103, 103, 101)],
+        "2025-01-04": [bar("2025-01-04", "09:35", 104, 104, 104, 99)],
+        "2025-01-05": [bar("2025-01-05", "09:35", 106, 107, 107, 105)],
+    }
+    result = simulate_k(
+        bars_by_day,
+        day_steps,
+        PlateauConfig(grid_amount=10_000, max_positions=2, friction_pct=0.1),
+        friction_pct=0.1,
+    )
+    assert result["loops"] == 4
+    assert result["max_positions_used"] == 2
+    assert result["max_positions"] == 2
+    assert result["capital_return_pct"] == pytest.approx(result["net_return_pct"] / 2)
 
 
 def test_detect_islands_flags_single_spike() -> None:

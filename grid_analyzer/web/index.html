@@ -173,6 +173,7 @@
         <div class="field"><label>k 终点</label><input id="plateau-k-end" type="number" value="2.50" min="0.1" max="5" step="0.05"></div>
         <div class="field"><label>k 步长</label><input id="plateau-k-step" type="number" value="0.05" min="0.01" max="0.5" step="0.01"></div>
         <div class="field"><label>单格资金 M（元）</label><input id="plateau-grid-amount" type="number" value="10000" min="100" step="1000"></div>
+        <div class="field"><label>最大持仓槽位</label><input id="plateau-max-positions" type="number" value="8" min="1" max="50" step="1"></div>
         <div class="field"><label>高原窗口 W</label><input id="plateau-window" type="number" value="5" min="2" max="21" step="1"></div>
         <button id="plateau-btn" class="secondary-btn">生成 ATR 归一化高原</button>
         <span id="plateau-status" class="hint"></span>
@@ -187,7 +188,7 @@
         </div>
       </details>
       <div id="plateau-wrap"></div>
-      <div class="note">实验模块：横轴为无量纲 k（网格步长 ÷ 日线 ATR(14)），共扫描 k × ATR 的完整曲线；红色为 k 低于 10 倍双边成本安全底线的禁区，浅蓝色为 0.65–0.80 × ATR% 理论先验带，绿色为实测高原，金色星标为高原中心偏左的 k*。计算使用 5 分钟 K 线做 0/1 阶跃触线撮合，ATR 只使用前一交易日及更早数据。结果为样本内研究参数，不构成投资建议。</div>
+      <div class="note">实验模块：横轴为无量纲 k（网格步长 ÷ 日线 ATR(14)），共扫描 k × ATR 的完整曲线；红色为 k 低于 10 倍双边成本安全底线的禁区，浅蓝色为 0.65–0.80 × ATR% 理论先验带，绿色为实测高原，金色星标为高原中心偏左的 k*。计算使用 5 分钟 K 线做 0/1 阶跃触线撮合：每日以前一交易日收盘价重新锚定阶梯，最多持有 N 个槽位，按格线成交，卖出受 T+1 约束。ATR 只使用前一交易日及更早数据。结果为样本内研究参数，不构成投资建议。</div>
     </div>
 
     <div class="panel" id="p-risk">

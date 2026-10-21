@@ -30,6 +30,7 @@ class PlateauService:
 
         config = PlateauConfig(
             grid_amount=request.grid_amount,
+            max_positions=request.max_positions,
             fee=request.fee,
             min_fee=request.min_fee,
             spread_pct=request.spread_pct,
@@ -72,6 +73,8 @@ class PlateauService:
             "latest_atr": data["latest_atr"],
             "latest_atr_pct": data["latest_atr_pct"],
             "grid_amount": request.grid_amount,
+            "max_positions": request.max_positions,
+            "grid_capital": request.grid_amount * request.max_positions,
             "fee": request.fee,
             "min_fee": request.min_fee,
             "spread_pct": request.spread_pct,
@@ -91,6 +94,8 @@ class PlateauService:
             "daily_count": len(daily_bars),
             "latest_atr14": data["latest_atr"],
             "latest_atr_pct": data["latest_atr_pct"],
+            "max_positions": request.max_positions,
+            "grid_capital": request.grid_amount * request.max_positions,
             "atr_lookahead_free": True,
             "static_mean_basis": "expanding trailing mean of prior ATR14%",
         }

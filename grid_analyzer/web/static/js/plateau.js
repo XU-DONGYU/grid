@@ -168,6 +168,8 @@ function contextCard(data) {
     <div><span>区间日均 ATR%</span><b>${pct(context.mean_atr_pct)}</b></div>
     <div><span>双边摩擦 C%</span><b>${pct(context.friction_pct)}</b></div>
     <div><span>安全底线 k<sub>min</sub></span><b>${num(context.k_min_safe, 3)}</b></div>
+    <div><span>最大持仓槽位</span><b>${fmt(context.max_positions, 0)} 格</b></div>
+    <div><span>网格资金</span><b>${fmt(context.grid_capital, 0)} 元</b></div>
     <div><span>5 分钟数据</span><b>${esc(context.data_start)} ~ ${esc(context.data_end)}（${fmt(context.bar_count, 0)} 根）</b></div>
   </div>`;
 }
@@ -183,10 +185,28 @@ function summaryCard(data) {
     <div><span>参数高原</span><b>${plateauText}</b></div>
     <div><span>最优系数 k*</span><b>${plateau ? fmt(plateau.k_star, 3) : '—'}</b></div>
     <div><span>高原平均净收益</span><b>${plateau ? pct(plateau.mean_net_return_pct) : '—'}</b></div>
-    <div><span>k* 闭环次数</span><b>${plateau ? fmt(plateau.k_star_loops, 0) : '—'}</b></div>
+    <div><span>k* 占网格资金</span><b>${plateau ? pct(plateau.k_star_capital_return_pct) : '—'}</b></div>
+    <div><span>k* 闭环 / 最大持仓</span><b>${plateau ? `${fmt(plateau.k_star_loops, 0)} / ${fmt(plateau.k_star_max_positions_used, 0)}` : '—'}</b></div>
     <div><span>剔除孤岛</span><b>${fmt(summary.island_count, 0)} 个</b></div>
     <div><span>先验重合</span><b>${prior.matches ? '是' : '否'}</b></div>
   </div>`;
+}
+
+function boundaryWarning(data) {
+  const summary = data.summary || {};
+  const messages = [];
+  if (summary.best_inside_forbidden) {
+    messages.push(`原始最优 k=${fmt(summary.raw_best_k, 2)} 落在手续费磨损禁区，说明该标的的历史频率优势不足以覆盖 10 倍成本安全线。`);
+  }
+  if (summary.plateau_at_safe_boundary) {
+    messages.push('合规高原贴近安全底线左边缘，实盘应优先观察右移后的高原中心，而不是继续压缩步长。');
+  }
+  const prior = data.prior_validation || {};
+  if (Number.isFinite(Number(summary.k_min_safe)) && Number(prior.prior_right) <= Number(summary.k_min_safe)) {
+    messages.push('0.65–0.80 × ATR% 理论先验带整体落在手续费磨损禁区，说明该标的当前波动率相对摩擦成本偏低。');
+  }
+  if (!messages.length) return '';
+  return `<div class="risk-item">${messages.map(esc).join('<br>')}</div>`;
 }
 
 function liveCard(data) {
@@ -269,17 +289,19 @@ function curveTable(data) {
   const rows = data.curve.map(point => `<tr class="${point.is_optimal ? 'now' : ''}">
     <td class="num">${fmt(point.k, 2)}</td>
     <td class="num">${pct(point.net_return_pct)}</td>
+    <td class="num">${pct(point.capital_return_pct)}</td>
     <td class="num">${fmt(point.loops, 0)}</td>
     <td class="num">${fmt(point.winning_loops, 0)}</td>
     <td class="num">${pct(point.avg_loop_return_pct)}</td>
     <td class="num">${pct(point.open_position_pnl_pct)}</td>
+    <td class="num">${fmt(point.max_positions_used, 0)} / ${fmt(point.max_positions, 0)}</td>
     <td>${point.below_safe ? '手续费禁区' : point.is_island ? '孤岛' : point.is_optimal ? 'k*' : point.in_plateau ? '高原' : ''}</td>
   </tr>`).join('');
   return `<details class="intraday-details">
     <summary>完整 k 扫描明细</summary>
     <div class="table-scroll">
       <table class="intraday-table">
-        <thead><tr><th>k</th><th>净收益率</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>标记</th></tr></thead>
+        <thead><tr><th>k</th><th>单格净收益</th><th>占网格资金</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>最大持仓</th><th>标记</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -294,6 +316,7 @@ export function renderPlateau(data, container) {
   container.innerHTML = `
     ${contextCard(data)}
     ${summaryCard(data)}
+    ${boundaryWarning(data)}
     ${chart(data)}
     <div class="plateau-cards">
       ${liveCard(data)}
@@ -301,6 +324,6 @@ export function renderPlateau(data, container) {
       ${priorCard(data)}
     </div>
     ${curveTable(data)}
-    <div class="note">实验模块：以 k × ATR(14)% 为唯一横轴，使用 0/1 阶跃触线撮合和单格归一化资金；ATR 只使用前一交易日及更早数据，静态均值模式使用扩展的历史均值。结果是样本内研究参数，不构成投资建议，也不替代滚动样本外验证和最终盲测。</div>
+    <div class="note">实验模块：以 k × ATR(14)% 为唯一横轴，使用 0/1 阶跃触线撮合和滚动阶梯网格。每个交易日以前一交易日收盘价重新锚定，最多持有 N 个单格资金槽位，按格线成交，卖出受 T+1 约束。ATR 只使用前一交易日及更早数据，静态均值模式使用扩展的历史均值。结果是样本内研究参数，不构成投资建议，也不替代滚动样本外验证和最终盲测。</div>
   `;
 }

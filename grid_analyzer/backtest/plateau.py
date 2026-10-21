@@ -24,6 +24,7 @@ class PlateauConfig:
     """Configuration for the ATR-normalised parameter-plateau scan."""
 
     grid_amount: float = 10_000.0
+    max_positions: int = 8
     fee: float = 0.025
     min_fee: float = 5.0
     spread_pct: float = 0.05
@@ -59,6 +60,7 @@ class _DayStep:
     step_pct: float
     step_abs: float
     atr_pct: float
+    anchor: float
 
 
 def plateau_k_values(start: float, end: float, step: float) -> list[float]:
@@ -175,36 +177,35 @@ def _build_day_steps(
             # The same day's ATR is only known after the close; use the prior day.
             continue
         previous = atr_series[index - 1]
+        anchor = previous.close
+        if anchor <= 0:
+            continue
         if config.mode == "dynamic":
             step_pct = k_value * previous.atr_pct
             step_abs = k_value * previous.atr
         else:
             trailing_mean_pct = prefix_pct[index] / index
             step_pct = k_value * trailing_mean_pct
-            step_abs = 0.0
-        if step_pct <= 0 or (config.mode == "dynamic" and step_abs <= 0):
+            step_abs = anchor * step_pct / 100.0
+        if step_pct <= 0 or step_abs <= 0:
             continue
         steps[day] = _DayStep(
             trading_day=day,
             step_pct=step_pct,
             step_abs=step_abs,
             atr_pct=previous.atr_pct,
+            anchor=anchor,
         )
     return steps
 
 
-def _buy_trigger(reference: float, step: _DayStep, mode: AnchorMode) -> float:
-    if mode == "dynamic":
-        trigger = reference - step.step_abs
-    else:
-        trigger = reference * (1.0 - step.step_pct / 100.0)
-    return max(0.01, trigger)
-
-
-def _target_price(buy_price: float, step: _DayStep, mode: AnchorMode) -> float:
-    if mode == "dynamic":
-        return buy_price + step.step_abs
-    return buy_price * (1.0 + step.step_pct / 100.0)
+def _day_levels(anchor: float, step_abs: float, max_positions: int) -> list[tuple[int, float]]:
+    levels: list[tuple[int, float]] = []
+    for index in range(max_positions):
+        level = anchor - (index + 1) * step_abs
+        if level > 0:
+            levels.append((index, level))
+    return levels
 
 
 def simulate_k(
@@ -213,122 +214,135 @@ def simulate_k(
     config: PlateauConfig,
     friction_pct: float,
 ) -> dict[str, Any]:
-    """Simulate one normalised grid slot with a 0/1 step-trigger model.
+    """Simulate a rolling normalised ladder grid with 0/1 line fills.
 
-    The slot always buys one notional ``grid_amount`` and sells the same
-    notional after one step.  Only one slot is held at a time, which keeps the
-    comparison across k values free from lot-size and absolute-price effects.
+    Each day re-anchors the ladder at the prior close and places up to
+    ``max_positions`` buy levels one step apart.  Every filled level is an
+    independent normalised slot of notional ``grid_amount``.  Positions are
+    sold one step above their fill, subject to T+1.  Re-anchoring every day
+    prevents a single trend from freezing the grid after one completed loop.
     """
     days = sorted(bars_by_day)
     day_index = {day: index for index, day in enumerate(days)}
-    reference: float | None = None
-    holding: dict[str, Any] | None = None
+    max_positions = max(1, int(config.max_positions))
+    open_lots: list[dict[str, Any]] = []
     loops = 0
     winning_loops = 0
     gross_return_pct = 0.0
     net_return_pct = 0.0
     loop_returns: list[float] = []
     max_open_loss_pct = 0.0
+    max_positions_used = 0
+    position_sum = 0
+    position_samples = 0
     first_trade_day: str | None = None
     last_trade_day: str | None = None
     last_price = 0.0
     last_day = days[-1] if days else ""
 
+    def close_lot(lot: dict[str, Any], sell_price: float) -> None:
+        nonlocal loops, winning_loops, gross_return_pct, net_return_pct, last_trade_day
+        gross = (sell_price / float(lot["price"]) - 1.0) * 100.0
+        net = gross - friction_pct
+        gross_return_pct += gross
+        net_return_pct += net
+        loop_returns.append(net)
+        loops += 1
+        if net > 0:
+            winning_loops += 1
+        last_trade_day = day
+        open_lots.remove(lot)
+
+    def open_lot(price: float, level_index: int, step_abs: float) -> None:
+        nonlocal first_trade_day, max_positions_used
+        open_lots.append(
+            {
+                "price": price,
+                "buy_day": day,
+                "target": price + step_abs,
+                "level_index": level_index,
+            }
+        )
+        if first_trade_day is None:
+            first_trade_day = day
+        max_positions_used = max(max_positions_used, len(open_lots))
+
     for day in days:
         bars = bars_by_day.get(day) or []
         if not bars:
             continue
-        if reference is None:
-            reference = float(bars[0]["open"])
 
         step = day_steps.get(day)
-        buy_trigger = None
-        if holding is None and step is not None:
-            buy_trigger = _buy_trigger(reference, step, config.mode)
+        step_abs = step.step_abs if step is not None else 0.0
+        anchor = step.anchor if step is not None else float(bars[0]["open"])
+        levels = _day_levels(anchor, step_abs, max_positions) if step_abs > 0 else []
+        used_levels: set[int] = set()
+        open_price = float(bars[0]["open"])
+
+        # Gap handling: sell filled lots whose target is below the open, then
+        # fill any buy levels that the open already gapped through.
+        for lot in list(open_lots):
+            if lot["buy_day"] < day and open_price >= float(lot["target"]):
+                close_lot(lot, float(lot["target"]))
+        if step_abs > 0:
+            for level_index, level in levels:
+                if len(open_lots) >= max_positions:
+                    break
+                if open_price <= level:
+                    open_lot(level, level_index, step_abs)
+                    used_levels.add(level_index)
+        max_positions_used = max(max_positions_used, len(open_lots))
 
         for bar in bars:
             path = _bar_path(bar)
             last_price = float(bar["close"])
             last_day = day
 
-            if holding is not None:
-                if holding["buy_day"] < day:
-                    target = float(holding["target"])
-                    if path[0] >= target:
-                        sell_price = path[0]
-                        gross = (sell_price / holding["price"] - 1.0) * 100.0
-                        net = gross - friction_pct
-                        gross_return_pct += gross
-                        net_return_pct += net
-                        loop_returns.append(net)
-                        loops += 1
-                        if net > 0:
-                            winning_loops += 1
-                        reference = sell_price
-                        holding = None
-                        last_trade_day = day
-                        continue
-                    for previous, current in zip(path, path[1:]):
-                        if current >= target > previous:
-                            gross = (target / holding["price"] - 1.0) * 100.0
-                            net = gross - friction_pct
-                            gross_return_pct += gross
-                            net_return_pct += net
-                            loop_returns.append(net)
-                            loops += 1
-                            if net > 0:
-                                winning_loops += 1
-                            reference = target
-                            holding = None
-                            last_trade_day = day
+            for previous, current in zip(path, path[1:]):
+                if current > previous:
+                    for lot in list(open_lots):
+                        target = float(lot["target"])
+                        if lot["buy_day"] < day and previous < target <= current:
+                            close_lot(lot, target)
+                elif current < previous and step_abs > 0:
+                    for level_index, level in levels:
+                        if len(open_lots) >= max_positions:
                             break
+                        if level_index in used_levels:
+                            continue
+                        if current <= level < previous:
+                            open_lot(level, level_index, step_abs)
+                            used_levels.add(level_index)
 
-            if holding is None and buy_trigger is not None:
-                buy_price = None
-                if path[0] <= buy_trigger:
-                    buy_price = path[0]
-                else:
-                    for previous, current in zip(path, path[1:]):
-                        if current <= buy_trigger < previous:
-                            buy_price = buy_trigger
-                            break
-                if buy_price is not None:
-                    holding = {
-                        "price": buy_price,
-                        "buy_day": day,
-                        "target": _target_price(buy_price, step, config.mode) if step else buy_price,
-                    }
-                    buy_trigger = None
-                    if first_trade_day is None:
-                        first_trade_day = day
-                    max_open_loss_pct = min(
-                        max_open_loss_pct,
-                        (float(bar["low"]) / buy_price - 1.0) * 100.0,
-                    )
+            max_positions_used = max(max_positions_used, len(open_lots))
+            position_sum += len(open_lots)
+            position_samples += 1
+            mark_to_market = sum(
+                (last_price / float(lot["price"]) - 1.0) * 100.0
+                for lot in open_lots
+            )
+            max_open_loss_pct = min(max_open_loss_pct, mark_to_market)
 
-            if holding is not None:
-                max_open_loss_pct = min(
-                    max_open_loss_pct,
-                    (float(bar["low"]) / float(holding["price"]) - 1.0) * 100.0,
-                )
-
-    open_position: dict[str, Any] | None = None
-    open_position_pnl_pct = 0.0
-    if holding is not None:
-        buy_price = float(holding["price"])
-        open_position_pnl_pct = (last_price / buy_price - 1.0) * 100.0 if buy_price > 0 else 0.0
-        open_position = {
-            "buy_day": holding["buy_day"],
-            "buy_price": buy_price,
-            "target_price": float(holding["target"]),
+    open_positions = [
+        {
+            "buy_day": lot["buy_day"],
+            "buy_price": float(lot["price"]),
+            "target_price": float(lot["target"]),
             "last_price": last_price,
-            "unrealized_pct": open_position_pnl_pct,
-            "holding_days": day_index.get(last_day, 0) - day_index.get(holding["buy_day"], 0) + 1,
+            "unrealized_pct": (last_price / float(lot["price"]) - 1.0) * 100.0,
+            "holding_days": day_index.get(last_day, 0) - day_index.get(lot["buy_day"], 0) + 1,
         }
-
+        for lot in open_lots
+    ]
+    open_position_pnl_pct = sum(float(item["unrealized_pct"]) for item in open_positions)
+    open_position_count = len(open_positions)
     trading_days = len(days)
     annualized = net_return_pct * TRADING_DAYS / trading_days if trading_days > 0 else 0.0
     average_loop = statistics.mean(loop_returns) if loop_returns else 0.0
+    average_positions = position_sum / position_samples if position_samples else 0.0
+    grid_capital = config.grid_amount * max_positions
+    net_profit_yuan = net_return_pct / 100.0 * config.grid_amount
+    open_position_pnl_yuan = open_position_pnl_pct / 100.0 * config.grid_amount
     return {
         "loops": loops,
         "winning_loops": winning_loops,
@@ -340,9 +354,19 @@ def simulate_k(
         "open_position_pnl_pct": open_position_pnl_pct,
         "total_return_pct": net_return_pct + open_position_pnl_pct,
         "max_open_loss_pct": max_open_loss_pct,
+        "capital_return_pct": net_return_pct / max_positions,
+        "used_capital_return_pct": net_return_pct / max_positions_used if max_positions_used else 0.0,
+        "capital_utilization_pct": max_positions_used / max_positions * 100.0,
+        "max_positions": max_positions,
+        "max_positions_used": max_positions_used,
+        "avg_positions": average_positions,
+        "open_position_count": open_position_count,
+        "grid_capital": grid_capital,
+        "net_profit_yuan": net_profit_yuan,
+        "open_position_pnl_yuan": open_position_pnl_yuan,
         "first_trade_day": first_trade_day,
         "last_trade_day": last_trade_day,
-        "open_position": open_position,
+        "open_positions": open_positions,
         "trading_days": trading_days,
     }
 
@@ -433,6 +457,9 @@ def select_plateau(
         "k_star_loops": int(center["loops"]),
         "k_star_open_position_pnl_pct": float(center["open_position_pnl_pct"]),
         "k_star_total_return_pct": float(center["total_return_pct"]),
+        "k_star_capital_return_pct": float(center.get("capital_return_pct", 0.0)),
+        "k_star_max_positions_used": int(center.get("max_positions_used", 0)),
+        "k_star_open_position_count": int(center.get("open_position_count", 0)),
         "profitable": mean > 0,
     }
 
@@ -623,6 +650,17 @@ def run_plateau_scan(
                 "open_position_pnl_pct": simulation["open_position_pnl_pct"],
                 "total_return_pct": simulation["total_return_pct"],
                 "max_open_loss_pct": simulation["max_open_loss_pct"],
+                "risk_adjusted_return_pct": simulation["net_return_pct"]
+                + min(0.0, float(simulation["open_position_pnl_pct"])),
+                "capital_return_pct": simulation["capital_return_pct"],
+                "used_capital_return_pct": simulation["used_capital_return_pct"],
+                "capital_utilization_pct": simulation["capital_utilization_pct"],
+                "max_positions": simulation["max_positions"],
+                "max_positions_used": simulation["max_positions_used"],
+                "avg_positions": simulation["avg_positions"],
+                "open_position_count": simulation["open_position_count"],
+                "net_profit_yuan": simulation["net_profit_yuan"],
+                "open_position_pnl_yuan": simulation["open_position_pnl_yuan"],
                 "below_safe": below_safe,
                 "is_island": False,
                 "in_plateau": False,
@@ -667,6 +705,8 @@ def run_plateau_scan(
         "mean_atr_pct": mean_atr_pct,
         "friction_pct": friction_pct,
         "k_min_safe": k_min_safe,
+        "max_positions": max(1, int(config.max_positions)),
+        "grid_capital": config.grid_amount * max(1, int(config.max_positions)),
         "forbidden_k_count": forbidden_count,
         "all_forbidden": forbidden_count == len(points),
         "island_count": len(islands),
@@ -674,6 +714,11 @@ def run_plateau_scan(
         "positive_plateau": bool(plateau and plateau["profitable"]),
         "raw_best_k": float(raw_best["k"]),
         "raw_best_net_return_pct": float(raw_best["net_return_pct"]),
+        "best_inside_forbidden": bool(raw_best["below_safe"]),
+        "plateau_at_safe_boundary": bool(
+            plateau is not None
+            and float(plateau["k_left"]) <= k_min_safe + config.k_step + 1e-9
+        ),
         "live_unavailable_reason": live_unavailable_reason,
         "sample_note": "样本内参数高原扫描，不替代滚动样本外验证。",
     }
@@ -683,6 +728,8 @@ def run_plateau_scan(
             "friction_pct": friction_pct,
             "static_mean_basis": "expanding trailing mean of prior ATR14%",
             "atr_lookahead_free": True,
+            "anchor": "prior trading day close, re-anchored daily",
+            "fill_policy": "grid_line",
         }
     )
     return {
