@@ -187,7 +187,7 @@
 
 - `context`：最新 ATR、价格、数据区间、摩擦、安全底线
 - `k_values`：扫描的 k 列表
-- `curve`：每个 k 的 `net_return_pct`、`capital_return_pct`、`selection_value`、`used_capital_return_pct`、`risk_adjusted_return_pct`、`annualized_net_return_pct`、`loops`、`max_positions_used`、`capital_utilization_pct`、`open_position_pnl_pct`、`open_position_count`、`realized_profit_yuan`、`open_position_pnl_yuan`、`total_pnl_yuan`、`ending_equity_yuan`、`ending_equity_return_pct`、`slippage_paid_pct`、`cash_remaining`、`capital_constrained_buys`、`limit_locked_days`、`stop_count`、`restart_count`、`stopped_days`、`below_safe`、`is_island`、`in_plateau`、`is_optimal` 等
+- `curve`：每个 k 的 `net_return_pct`、`capital_return_pct`、`selection_value`、`used_capital_return_pct`、`risk_adjusted_return_pct`、`annualized_net_return_pct`、`loops`、`max_positions_used`、`capital_utilization_pct`、`open_position_pnl_pct`、`open_position_count`、`realized_profit_yuan`、`open_position_pnl_yuan`、`open_position_market_value_yuan`、`cash_remaining`、`total_pnl_yuan`、`ending_equity_yuan`、`liquidation_equity_yuan`、`liquidation_pnl_yuan`、`ending_equity_return_pct`、`liquidation_return_pct`、`equity_identity_gap_yuan`、`slippage_paid_pct`、`capital_constrained_buys`、`limit_locked_days`、`stop_count`、`restart_count`、`stopped_days`、`below_safe`、`is_island`、`in_plateau`、`is_optimal` 等
 - `islands`：被剔除的孤岛点及左右跌幅
 - `plateau`：实测高原 `[k_left, k_right]`、`k_star`、均值、标准差、评分、k* 占网格资金收益、最大持仓、止损/重启次数
 - `prior_validation`：与 `0.65–0.80 × ATR%` 先验带的重合关系
@@ -199,14 +199,14 @@
 
 该接口为同步调用，计算量远小于 5 分钟滚动 OOS；数据有效但找不到连续高原时返回 200 与 `plateau=null`，由前端展示原因；完全没有可用数据时返回 400/404。找不到正收益高原或合规高原顶到 k 扫描右边界时，`live=null` 并返回原因。
 
-默认模型是 `fixed` 固定区间网格：启动时用自动或手动区间确定上下限，密度以 k × ATR% 冻结，之后档位不动；涨破上限和跌破下限默认都只等待回到区间。每格固定买入 `shares_per_grid` 股，默认 100 股；现金上限为 `capital`。默认要求价格穿透格线 `penetration_abs=0.01` 元才成交。支持 `daily_roll`、`fixed_band`、`fixed`、`periodic` 对照；支持滑点、涨跌停锁定、缺失日处理和可选破网止损（默认 0，不强制止损）。`net_return_pct` 是 100 股参考名义本金上的单格累计净收益，`capital_return_pct` 是占总资金的已实现收益；`total_pnl_yuan = realized_profit_yuan + open_position_pnl_yuan`，`ending_equity_yuan = capital + total_pnl_yuan`。单边佣金来自请求 `fee`，最低佣金来自 `min_fee`，卖出印花税固定 0.05%；最低佣金计入逐笔盈亏，但不进入理论 C%。默认前 70% 交易日选参，后 30% 作为留出段只评估锁定的 `k*`；`compare_anchor_policies=true` 时会额外返回四种策略的对照表。前端为规避反向代理超时，先请求主策略出图，再逐个策略补齐对照表。
+默认模型是 `fixed` 固定区间网格：启动时用自动或手动区间确定上下限，密度以 k × ATR% 冻结，之后档位不动；涨破上限和跌破下限默认都只等待回到区间。每格固定买入 `shares_per_grid` 股，默认 100 股；现金上限为 `capital`。默认要求价格穿透格线 `penetration_abs=0.01` 元才成交。支持 `daily_roll`、`fixed_band`、`fixed`、`periodic` 对照；支持滑点、涨跌停锁定、缺失日处理和可选破网止损（默认 0，不强制止损）。`net_return_pct` 是 100 股参考名义本金上的单格累计净收益，`capital_return_pct` 是占总资金的已实现收益；`open_position_pnl_yuan` 已扣除持仓买入费用，`total_pnl_yuan = realized_profit_yuan + open_position_pnl_yuan`，`ending_equity_yuan = cash_remaining + open_position_market_value_yuan`（也应等于 `capital + total_pnl_yuan`）。`liquidation_equity_yuan` 再扣除期末持仓的预估卖出佣金和印花税。单边佣金来自请求 `fee`，最低佣金来自 `min_fee`，卖出印花税固定 0.05%；最低佣金计入逐笔盈亏，但不进入理论 C%。默认前 70% 交易日选参，后 30% 作为留出段只评估锁定的 `k*`；`compare_anchor_policies=true` 时会额外返回四种策略的对照表。前端为规避反向代理超时，先请求主策略出图，再逐个策略补齐对照表。
 
 ## GET /api/health
 
 返回：
 
 ```json
-{"ok": true, "version": "2.9.0", "env": "development"}
+{"ok": true, "version": "2.9.1", "env": "development"}
 ```
 
 ## GET /api/version
@@ -214,7 +214,7 @@
 返回：
 
 ```json
-{"version": "2.9.0", "schema_version": 2}
+{"version": "2.9.1", "schema_version": 2}
 ```
 
 ## 错误响应

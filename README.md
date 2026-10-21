@@ -184,7 +184,7 @@ curl -s http://127.0.0.1:8000/api/health
 健康检查返回：
 
 ```json
-{"ok": true, "version": "2.9.0", "env": "development"}
+{"ok": true, "version": "2.9.1", "env": "development"}
 ```
 
 服务重启后 PID 会变化，这是正常现象。应以服务单元名和健康检查判断状态，而不是记旧 PID。

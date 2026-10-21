@@ -190,8 +190,10 @@ k_min_safe = 10 × C% / mean(ATR14%)
 net_return_pct = Σ 单次闭环净利%
 n(k) = 有效止盈闭环次数（不含止损清仓）
 capital_return_pct = Σ 净利润 / 总资金 × 100
+open_position_pnl_yuan = 持仓市值 - 持仓成本（含买入佣金）
 total_pnl_yuan = realized_profit_yuan + open_position_pnl_yuan
-ending_equity_yuan = capital + total_pnl_yuan
+ending_equity_yuan = cash_remaining + 持仓市值 = capital + total_pnl_yuan
+liquidation_equity_yuan = cash_remaining + 持仓市值 - 预估卖出佣金和印花税
 selection_value = net_return_pct - open_loss_penalty × max(0, -期末浮盈亏)
 ```
 

@@ -217,10 +217,14 @@ function equityCard(data) {
       <div><span>期初资金</span><b>${fmt(capital, 2)} 元</b></div>
       <div><span>已实现套利利润</span><b>${fmt(plateau.k_star_realized_profit_yuan, 2)} 元</b></div>
       <div><span>期末持仓浮动盈亏</span><b>${fmt(plateau.k_star_open_position_pnl_yuan, 2)} 元</b></div>
-      <div><span>期末总净值</span><b>${fmt(plateau.k_star_ending_equity_yuan, 2)} 元</b></div>
-      <div><span>总收益</span><b>${pct(plateau.k_star_ending_equity_return_pct)}</b></div>
+      <div><span>期末现金</span><b>${fmt(plateau.k_star_cash_remaining, 2)} 元</b></div>
+      <div><span>期末持仓市值</span><b>${fmt(plateau.k_star_open_position_market_value_yuan, 2)} 元</b></div>
+      <div><span>期末总净值（市值口径）</span><b>${fmt(plateau.k_star_ending_equity_yuan, 2)} 元</b></div>
+      <div><span>期末可兑现净值</span><b>${fmt(plateau.k_star_liquidation_equity_yuan, 2)} 元</b></div>
+      <div><span>总收益（市值口径）</span><b>${pct(plateau.k_star_ending_equity_return_pct)}</b></div>
+      <div><span>可兑现收益</span><b>${pct(plateau.k_star_liquidation_return_pct)}</b></div>
     </div>
-    <div class="note">期末总净值 = 期初资金 + 已实现套利利润 + 期末持仓浮动盈亏。</div>
+    <div class="note">期末总净值 = 期末现金 + 期末持仓市值，也等于期初资金 + 已实现套利利润 + 期末持仓浮动盈亏（含买入费用）。可兑现净值再扣除期末持仓的预估卖出佣金和印花税。</div>
   </div>`;
 }
 
@@ -247,6 +251,7 @@ function holdoutCard(data) {
       <div><span>区间外天数（上/下）</span><b>${fmt(holdout.upper_breakout_days, 0)} / ${fmt(holdout.lower_breakout_days, 0)}</b></div>
       <div><span>已实现 / 浮动盈亏</span><b>${fmt(holdout.realized_profit_yuan, 2)} / ${fmt(holdout.open_position_pnl_yuan, 2)} 元</b></div>
       <div><span>期末总净值</span><b>${fmt(holdout.ending_equity_yuan, 2)} 元（${pct(holdout.ending_equity_return_pct)}）</b></div>
+      <div><span>期末可兑现净值</span><b>${fmt(holdout.liquidation_equity_yuan, 2)} 元（${pct(holdout.liquidation_return_pct)}）</b></div>
     </div>
     <div class="note">留出段只评估样本内选出的 k*，不参与高原选择。</div>
   </div>`;
@@ -436,6 +441,7 @@ function curveTable(data) {
     <td class="num">${fmt(point.realized_profit_yuan, 2)}</td>
     <td class="num">${fmt(point.open_position_pnl_yuan, 2)}</td>
     <td class="num">${fmt(point.ending_equity_yuan, 2)}</td>
+    <td class="num">${fmt(point.liquidation_equity_yuan, 2)}</td>
     <td class="num">${fmt(point.max_positions_used, 0)} / ${fmt(point.max_positions, 0)}</td>
     <td class="num">${fmt(point.stop_count, 0)} / ${fmt(point.restart_count, 0)}</td>
     <td>${point.below_safe ? '手续费禁区' : point.is_island ? '孤岛' : point.is_optimal ? 'k*' : point.in_plateau ? '高原' : ''}</td>
@@ -444,7 +450,7 @@ function curveTable(data) {
     <summary>完整 k 扫描明细</summary>
     <div class="table-scroll">
       <table class="intraday-table">
-        <thead><tr><th>k</th><th>单格收益</th><th>总资金收益</th><th>选参值</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>已实现(元)</th><th>期末浮盈(元)</th><th>期末净值(元)</th><th>最大持仓</th><th>止损/重启</th><th>标记</th></tr></thead>
+        <thead><tr><th>k</th><th>单格收益</th><th>总资金收益</th><th>选参值</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>已实现(元)</th><th>期末浮盈(元)</th><th>期末净值(元)</th><th>可兑现净值(元)</th><th>最大持仓</th><th>止损/重启</th><th>标记</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>

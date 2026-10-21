@@ -477,11 +477,16 @@ class PlateauPoint(ApiModel):
     net_profit_yuan: float
     realized_profit_yuan: float
     open_position_pnl_yuan: float
+    open_position_market_value_yuan: float
     total_pnl_yuan: float
     ending_equity_yuan: float
+    liquidation_equity_yuan: float
+    liquidation_pnl_yuan: float
+    equity_identity_gap_yuan: float
     realized_return_pct: float
     open_position_return_pct: float
     ending_equity_return_pct: float
+    liquidation_return_pct: float
     slippage_paid_pct: float
     cash_remaining: float
     peak_invested: float
@@ -536,6 +541,11 @@ class PlateauBand(ApiModel):
     k_star_total_pnl_yuan: float
     k_star_ending_equity_yuan: float
     k_star_ending_equity_return_pct: float
+    k_star_liquidation_equity_yuan: float
+    k_star_liquidation_pnl_yuan: float
+    k_star_liquidation_return_pct: float
+    k_star_cash_remaining: float
+    k_star_open_position_market_value_yuan: float
     profitable: bool
 
 
@@ -611,6 +621,9 @@ class PlateauHoldout(ApiModel):
     total_pnl_yuan: float | None = None
     ending_equity_yuan: float | None = None
     ending_equity_return_pct: float | None = None
+    liquidation_equity_yuan: float | None = None
+    liquidation_pnl_yuan: float | None = None
+    liquidation_return_pct: float | None = None
     positive: bool | None = None
 
 

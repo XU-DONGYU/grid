@@ -552,7 +552,7 @@ def simulate_k(
                     if lot["buy_day"] < day:
                         close_lot(lot, open_price, count_loop=False)
                 mark_to_market = sum(
-                    (last_price - float(lot["price"])) * float(lot["shares"])
+                    float(lot["shares"]) * last_price - float(lot["cost"])
                     for lot in open_lots
                 ) / normalization_notional * 100.0
                 max_open_loss_pct = min(max_open_loss_pct, mark_to_market)
@@ -605,7 +605,7 @@ def simulate_k(
             last_price = float(bars[-1]["close"])
             last_day = day
             mark_to_market = sum(
-                (last_price - float(lot["price"])) * float(lot["shares"])
+                float(lot["shares"]) * last_price - float(lot["cost"])
                 for lot in open_lots
             ) / normalization_notional * 100.0
             max_open_loss_pct = min(max_open_loss_pct, mark_to_market)
@@ -694,28 +694,47 @@ def simulate_k(
             position_sum += len(open_lots)
             position_samples += 1
             mark_to_market = sum(
-                (last_price - float(lot["price"])) * float(lot["shares"])
+                float(lot["shares"]) * last_price - float(lot["cost"])
                 for lot in open_lots
             ) / normalization_notional * 100.0
             max_open_loss_pct = min(max_open_loss_pct, mark_to_market)
             if stopped_today:
                 break
 
-    open_positions = [
-        {
-            "buy_day": lot["buy_day"],
-            "buy_price": float(lot["price"]),
-            "target_price": float(lot["target"]),
-            "shares": float(lot["shares"]),
-            "last_price": last_price,
-            "unrealized_pct": (
-                (last_price - float(lot["price"])) * float(lot["shares"])
-                / normalization_notional * 100.0
-            ),
-            "holding_days": day_index.get(last_day, 0) - day_index.get(lot["buy_day"], 0) + 1,
-        }
-        for lot in open_lots
-    ]
+    open_positions: list[dict[str, Any]] = []
+    open_position_market_value = 0.0
+    open_position_pnl_yuan = 0.0
+    liquidation_value_total = 0.0
+    for lot in open_lots:
+        shares = float(lot["shares"])
+        market_value = shares * last_price
+        cost = float(lot["cost"])
+        unrealized = market_value - cost
+        sell_fee = commission(market_value, config.fee, config.min_fee)
+        stamp = market_value * STAMP_TAX
+        liquidation_value = market_value - sell_fee - stamp
+        open_positions.append(
+            {
+                "buy_day": lot["buy_day"],
+                "buy_price": float(lot["price"]),
+                "target_price": float(lot["target"]),
+                "shares": shares,
+                "cost": cost,
+                "market_value": market_value,
+                "unrealized_yuan": unrealized,
+                "unrealized_pct": unrealized / normalization_notional * 100.0,
+                "estimated_sell_fee": sell_fee + stamp,
+                "liquidation_value": liquidation_value,
+                "liquidation_pnl": liquidation_value - cost,
+                "last_price": last_price,
+                "holding_days": day_index.get(last_day, 0)
+                - day_index.get(lot["buy_day"], 0)
+                + 1,
+            }
+        )
+        open_position_market_value += market_value
+        open_position_pnl_yuan += unrealized
+        liquidation_value_total += liquidation_value
     open_position_pnl_pct = sum(float(item["unrealized_pct"]) for item in open_positions)
     open_position_count = len(open_positions)
     trading_days = len(days)
@@ -723,12 +742,11 @@ def simulate_k(
     average_loop = statistics.mean(loop_returns) if loop_returns else 0.0
     average_positions = position_sum / position_samples if position_samples else 0.0
     net_profit_yuan = net_profit_total
-    open_position_pnl_yuan = sum(
-        (last_price - float(lot["price"])) * float(lot["shares"])
-        for lot in open_lots
-    )
-    total_pnl_yuan = net_profit_yuan + open_position_pnl_yuan
-    ending_equity_yuan = config.capital + total_pnl_yuan
+    ending_equity_yuan = cash + open_position_market_value
+    total_pnl_yuan = ending_equity_yuan - config.capital
+    liquidation_equity_yuan = cash + liquidation_value_total
+    liquidation_pnl_yuan = liquidation_equity_yuan - config.capital
+    equity_identity_gap_yuan = total_pnl_yuan - (net_profit_yuan + open_position_pnl_yuan)
     return {
         "loops": loops,
         "winning_loops": winning_loops,
@@ -758,8 +776,12 @@ def simulate_k(
         "net_profit_yuan": net_profit_yuan,
         "realized_profit_yuan": net_profit_yuan,
         "open_position_pnl_yuan": open_position_pnl_yuan,
+        "open_position_market_value_yuan": open_position_market_value,
         "total_pnl_yuan": total_pnl_yuan,
         "ending_equity_yuan": ending_equity_yuan,
+        "liquidation_equity_yuan": liquidation_equity_yuan,
+        "liquidation_pnl_yuan": liquidation_pnl_yuan,
+        "equity_identity_gap_yuan": equity_identity_gap_yuan,
         "realized_return_pct": (
             net_profit_yuan / config.capital * 100.0 if config.capital > 0 else 0.0
         ),
@@ -768,6 +790,9 @@ def simulate_k(
         ),
         "ending_equity_return_pct": (
             total_pnl_yuan / config.capital * 100.0 if config.capital > 0 else 0.0
+        ),
+        "liquidation_return_pct": (
+            liquidation_pnl_yuan / config.capital * 100.0 if config.capital > 0 else 0.0
         ),
         "capital_constrained_buys": capital_constrained_buys,
         "limit_locked_days": limit_locked_days,
@@ -894,6 +919,13 @@ def select_plateau(
         "k_star_total_pnl_yuan": float(center.get("total_pnl_yuan", 0.0)),
         "k_star_ending_equity_yuan": float(center.get("ending_equity_yuan", 0.0)),
         "k_star_ending_equity_return_pct": float(center.get("ending_equity_return_pct", 0.0)),
+        "k_star_liquidation_equity_yuan": float(center.get("liquidation_equity_yuan", 0.0)),
+        "k_star_liquidation_pnl_yuan": float(center.get("liquidation_pnl_yuan", 0.0)),
+        "k_star_liquidation_return_pct": float(center.get("liquidation_return_pct", 0.0)),
+        "k_star_cash_remaining": float(center.get("cash_remaining", 0.0)),
+        "k_star_open_position_market_value_yuan": float(
+            center.get("open_position_market_value_yuan", 0.0)
+        ),
         "profitable": mean > 0 and net_mean > 0,
     }
 
@@ -1157,11 +1189,16 @@ def run_plateau_scan(
                 "net_profit_yuan": simulation["net_profit_yuan"],
                 "realized_profit_yuan": simulation["realized_profit_yuan"],
                 "open_position_pnl_yuan": simulation["open_position_pnl_yuan"],
+                "open_position_market_value_yuan": simulation["open_position_market_value_yuan"],
                 "total_pnl_yuan": simulation["total_pnl_yuan"],
                 "ending_equity_yuan": simulation["ending_equity_yuan"],
+                "liquidation_equity_yuan": simulation["liquidation_equity_yuan"],
+                "liquidation_pnl_yuan": simulation["liquidation_pnl_yuan"],
+                "equity_identity_gap_yuan": simulation["equity_identity_gap_yuan"],
                 "realized_return_pct": simulation["realized_return_pct"],
                 "open_position_return_pct": simulation["open_position_return_pct"],
                 "ending_equity_return_pct": simulation["ending_equity_return_pct"],
+                "liquidation_return_pct": simulation["liquidation_return_pct"],
                 "slippage_paid_pct": simulation["slippage_paid_pct"],
                 "cash_remaining": simulation["cash_remaining"],
                 "peak_invested": simulation["peak_invested"],
@@ -1208,6 +1245,9 @@ def run_plateau_scan(
         "total_pnl_yuan": None,
         "ending_equity_yuan": None,
         "ending_equity_return_pct": None,
+        "liquidation_equity_yuan": None,
+        "liquidation_pnl_yuan": None,
+        "liquidation_return_pct": None,
         "positive": None,
     }
     if oos_days and plateau is not None:
@@ -1240,6 +1280,9 @@ def run_plateau_scan(
                 "total_pnl_yuan": oos_simulation["total_pnl_yuan"],
                 "ending_equity_yuan": oos_simulation["ending_equity_yuan"],
                 "ending_equity_return_pct": oos_simulation["ending_equity_return_pct"],
+                "liquidation_equity_yuan": oos_simulation["liquidation_equity_yuan"],
+                "liquidation_pnl_yuan": oos_simulation["liquidation_pnl_yuan"],
+                "liquidation_return_pct": oos_simulation["liquidation_return_pct"],
                 "positive": oos_simulation["net_return_pct"] > 0,
             }
         )

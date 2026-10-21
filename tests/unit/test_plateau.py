@@ -211,6 +211,34 @@ def test_ending_equity_splits_realized_and_open_pnl() -> None:
     assert result["ending_equity_return_pct"] == pytest.approx(0.01)
 
 
+def test_ending_equity_identity_includes_open_buy_fee() -> None:
+    day_steps = {
+        "2025-01-02": step("2025-01-02", 2.0),
+        "2025-01-03": step("2025-01-03", 2.0),
+    }
+    bars_by_day = {
+        "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 99, 97.99)],
+        "2025-01-03": [bar("2025-01-03", "09:35", 99, 99, 99, 98)],
+    }
+    result = simulate_k(
+        bars_by_day,
+        day_steps,
+        make_config(
+            capital=100_000,
+            fee=0.025,
+            min_fee=5,
+            penetration_abs=0.01,
+        ),
+    )
+    assert result["realized_profit_yuan"] == pytest.approx(0.0)
+    assert result["open_position_pnl_yuan"] == pytest.approx(95.0)
+    assert result["total_pnl_yuan"] == pytest.approx(95.0)
+    assert result["ending_equity_yuan"] == pytest.approx(100_095.0)
+    assert result["equity_identity_gap_yuan"] == pytest.approx(0.0)
+    assert result["liquidation_equity_yuan"] == pytest.approx(100_085.05)
+    assert result["liquidation_pnl_yuan"] == pytest.approx(85.05)
+
+
 def test_static_mode_uses_percentage_step() -> None:
     day_steps = {
         "2025-01-02": step("2025-01-02", 2.0),

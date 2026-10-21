@@ -1,6 +1,6 @@
 # ATR 归一化参数高原（实验）产品文档
 
-- `doc_version`: 0.7.0
+- `doc_version`: 0.8.0
 - `last_updated`: 2026-10-21
 - `related_code`: `grid_analyzer/backtest/plateau.py`, `grid_analyzer/services/plateau.py`, `grid_analyzer/api/routes.py`, `grid_analyzer/api/schemas.py`, `grid_analyzer/web/static/js/plateau.js`
 - `related_api`: `POST /api/plateau`
@@ -136,9 +136,11 @@
 4.1 **期末总净值拆分**
    - 期初资金
    - 已实现套利利润（元）
-   - 期末持仓浮动盈亏（元）
-   - 期末总净值 = 期初资金 + 已实现利润 + 期末浮盈亏
-   - 期末总收益 %
+   - 期末持仓浮动盈亏（元，已扣买入费用）
+   - 期末现金、期末持仓市值
+   - 期末总净值 = 期末现金 + 期末持仓市值
+   - 期末可兑现净值（扣预估卖出佣金和印花税）
+   - 期末总收益 % / 可兑现收益 %
 
 5. **拐点触发卡片**
    - 灵敏区基础步长
@@ -291,9 +293,14 @@ n(k) = 有效止盈闭环次数（不含止损清仓）
 - `risk_adjusted_return_pct`：`net_return_pct + min(0, open_position_pnl_pct)`。
 - `selection_value`：`net_return_pct - open_loss_penalty × max(0, -期末浮亏)`，用于高原选择。
 - `realized_profit_yuan`：已实现套利净利润（元）。
-- `open_position_pnl_yuan`：期末未平仓浮动盈亏（元）。
+- `open_position_pnl_yuan`：期末未平仓浮动盈亏（元），已扣除持仓的买入佣金。
+- `open_position_market_value_yuan`：期末持仓市值。
+- `cash_remaining`：期末现金。
 - `total_pnl_yuan`：已实现利润 + 期末浮盈（元）。
-- `ending_equity_yuan`：期初资金 + `total_pnl_yuan`，即期末总净值。
+- `ending_equity_yuan`：`cash_remaining + open_position_market_value_yuan`，也等于期初资金 + `total_pnl_yuan`，即期末总净值。
+- `liquidation_equity_yuan`：期末可兑现净值 = 现金 + 持仓市值 - 预估卖出佣金和印花税。
+- `liquidation_pnl_yuan` / `liquidation_return_pct`：可兑现口径的盈亏和收益率。
+- `equity_identity_gap_yuan`：净值恒等式校验差额，正常应接近 0。
 - `ending_equity_return_pct`：`total_pnl_yuan / 总资金 × 100`。
 
 ### 5.5 参数孤岛
@@ -532,6 +539,7 @@ sell_trigger_price = latest_price × (1 + d_exec% / 100)
 | 2026-10-21 | 0.5.0 | 默认改为 fixed 固定区间网格；区间自动/手动覆盖；上下沿突破等待回区间；daily_roll 仅作研究对照 |
 | 2026-10-21 | 0.6.0 | 每格固定 100 股并移除单格资金输入；明确单边佣金/最低佣金/印花税计算；拐点触发标注为执行建议；破网止损默认关闭 |
 | 2026-10-21 | 0.7.0 | 增加穿透撮合要求（默认 0.01 元）；拆分已实现套利利润、期末持仓浮盈亏和期末总净值 |
+| 2026-10-21 | 0.8.0 | 修正期末净值：浮盈扣除买入费用，输出期末现金、持仓市值、可兑现净值和净值恒等式校验 |
 
 相关文档：
 
