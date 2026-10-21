@@ -23,6 +23,7 @@
     <a href="#p-chart">价格走势</a>
     <a href="#p-bt">历史回测</a>
     <a href="#p-heatmap">5分钟高原</a>
+    <a href="#p-plateau">ATR高原</a>
     <a href="#p-risk">风险提示</a>
   </nav>
 
@@ -156,6 +157,37 @@
       </details>
       <div id="heatmap-wrap"></div>
       <div class="note">5 分钟 K 线用于成交和验证，日线 ATR(14) 用于网格密度基准。每个窗口 6 个月（约 126 个交易日），前 70% 选参、后 30% 样本外；滚动步长等于样本外长度，累计样本外至少 12 个月；最后 3 个月为锁定参数盲测，完全不参与选参。初始底仓沿用上方“初始底仓 %”输入。</div>
+    </div>
+
+    <div class="panel" id="p-plateau">
+      <div class="card-title"><span class="bar"></span>ATR 归一化参数高原（实验）</div>
+      <div class="heatmap-controls">
+        <div class="field">
+          <label>锚定模式</label>
+          <select id="plateau-mode">
+            <option value="dynamic">动态自适应（每日 k × ATR）</option>
+            <option value="static_mean">静态均值（k × 历史日均 ATR%）</option>
+          </select>
+        </div>
+        <div class="field"><label>k 起点</label><input id="plateau-k-start" type="number" value="0.20" min="0.05" max="5" step="0.05"></div>
+        <div class="field"><label>k 终点</label><input id="plateau-k-end" type="number" value="2.50" min="0.1" max="5" step="0.05"></div>
+        <div class="field"><label>k 步长</label><input id="plateau-k-step" type="number" value="0.05" min="0.01" max="0.5" step="0.01"></div>
+        <div class="field"><label>单格资金 M（元）</label><input id="plateau-grid-amount" type="number" value="10000" min="100" step="1000"></div>
+        <div class="field"><label>高原窗口 W</label><input id="plateau-window" type="number" value="5" min="2" max="21" step="1"></div>
+        <button id="plateau-btn" class="secondary-btn">生成 ATR 归一化高原</button>
+        <span id="plateau-status" class="hint"></span>
+      </div>
+      <details class="intraday-advanced">
+        <summary>高级修正参数</summary>
+        <div class="heatmap-controls" style="margin-top:12px">
+          <div class="field"><label>历史价差代理 %</label><input id="plateau-spread" type="number" value="0.05" min="0" max="5" step="0.01"></div>
+          <div class="field"><label>孤岛陡峭度阈值</label><input id="plateau-island-ratio" type="number" value="0.25" min="0" max="2" step="0.05"></div>
+          <div class="field"><label>整数关口下移 %</label><input id="plateau-front-run-offset" type="number" value="0.20" min="0" max="1" step="0.05"></div>
+          <div class="field"><label>历史交易日</label><input id="plateau-history-days" type="number" value="500" min="60" max="3000" step="10"></div>
+        </div>
+      </details>
+      <div id="plateau-wrap"></div>
+      <div class="note">实验模块：横轴为无量纲 k（网格步长 ÷ 日线 ATR(14)），共扫描 k × ATR 的完整曲线；红色为 k 低于 10 倍双边成本安全底线的禁区，浅蓝色为 0.65–0.80 × ATR% 理论先验带，绿色为实测高原，金色星标为高原中心偏左的 k*。计算使用 5 分钟 K 线做 0/1 阶跃触线撮合，ATR 只使用前一交易日及更早数据。结果为样本内研究参数，不构成投资建议。</div>
     </div>
 
     <div class="panel" id="p-risk">

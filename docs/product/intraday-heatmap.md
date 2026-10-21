@@ -1,7 +1,7 @@
 # 5 分钟参数高原热力图 产品文档
 
-- `doc_version`: 0.2.0
-- `last_updated`: 2026-10-19
+- `doc_version`: 0.3.0
+- `last_updated`: 2026-10-21
 - `related_code`: `grid_analyzer/services/intraday_heatmap.py`, `grid_analyzer/services/intraday_research.py`, `grid_analyzer/data/intraday.py`, `grid_analyzer/backtest/engine.py`, `grid_analyzer/backtest/metrics.py`
 - `related_api`: `POST /api/intraday-heatmap/jobs`, `GET /api/intraday-heatmap/jobs/{job_id}`
 - `related_tests`: `tests/unit/test_intraday_backtest.py`, `tests/unit/test_intraday_cache.py`, `tests/unit/test_intraday_research.py`, `tests/unit/test_metrics.py`, `tests/integration/test_intraday_heatmap.py`
@@ -238,13 +238,17 @@ target_gap = K × 日线 ATR(14)%
 
 命令行入口：`scripts/intraday_heatmap.py`。
 
+实验扩展：ATR 归一化参数高原使用独立的 `POST /api/plateau` 接口和 `grid_analyzer/backtest/plateau.py` 引擎，以无量纲 k 为单轴、0/1 阶跃撮合、孤岛剔除和中心偏左高原选择为特征。它不替代本页的滚动 OOS 和最终盲测，详细口径见 [ATR 归一化参数高原（实验）](atr-plateau.md)。
+
 | 日期 | 版本 | 变更 |
 |---|---|---|
 | 2026-10-19 | 0.1.0 | 初版：确定 6 个月窗口、70/30、滚动 OOS、最终盲测和产品文档约束 |
 | 2026-10-19 | 0.2.0 | 实现 BaoStock 数据层、5 分钟引擎、指标、滚动 OOS、最终盲测、API 和前端面板 |
+| 2026-10-21 | 0.3.0 | 新增实验性 ATR 归一化参数高原入口和产品文档链接；保留原有滚动验证不变 |
 
 相关文档：
 
+- [ATR 归一化参数高原（实验）](atr-plateau.md)
 - [架构说明](../architecture.md)
 - [方法论](../methodology.md)
 - [API 契约](../api.md)

@@ -43,12 +43,12 @@ API 路由 (grid_analyzer/api)
 
 | 目录 | 职责 |
 |---|---|
-| `grid_analyzer/api` | `/api/analyze`、`/api/health`、`/api/version` |
-| `grid_analyzer/services` | 分析流程编排、参数扫描、Walk-forward |
+| `grid_analyzer/api` | `/api/analyze`、`/api/heatmap`、`/api/intraday-heatmap`、`/api/plateau`、`/api/health`、`/api/version` |
+| `grid_analyzer/services` | 分析流程编排、参数扫描、Walk-forward、ATR 归一化高原数据编排 |
 | `grid_analyzer/data` | 数据源协议、腾讯实现、缓存 |
 | `grid_analyzer/indicators` | 中轴、ATR、HV、布林带宽、Squeeze、趋势、评分、流动性 |
 | `grid_analyzer/grid` | 间距规则、主/辅网格、资金分配、资金约束 |
-| `grid_analyzer/backtest` | 事件驱动撮合、T+1、止损、权益曲线、滚动窗口 |
+| `grid_analyzer/backtest` | 事件驱动撮合、T+1、止损、权益曲线、滚动窗口、ATR 归一化高原引擎 |
 | `grid_analyzer/risk` | 趋势、挤压、流动性、资金约束、止损风险 |
 | `grid_analyzer/web` | HTML 骨架、CSS、ES Modules |
 | `scripts` | 参数扫描、Walk-forward、隐私扫描 |

@@ -5,6 +5,7 @@
 | 模块 | 产品文档 | 代码入口 |
 |---|---|---|
 | 5 分钟参数高原热力图 | [`intraday-heatmap.md`](intraday-heatmap.md) | `grid_analyzer/services/intraday_heatmap.py` |
+| ATR 归一化参数高原（实验） | [`atr-plateau.md`](atr-plateau.md) | `grid_analyzer/backtest/plateau.py` |
 | 单股票网格分析 | 待补充 | `grid_analyzer/services/analysis.py` |
 | 日线参数热力图 | 待补充 | `grid_analyzer/services/heatmap.py` |
 

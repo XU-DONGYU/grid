@@ -19,8 +19,12 @@ from grid_analyzer.api.schemas import (
     IntradayJobCreateResponse,
     IntradayJobStatusData,
     IntradayJobStatusResponse,
+    PlateauData,
+    PlateauRequest,
+    PlateauResponse,
     VersionResponse,
 )
+from grid_analyzer.backtest.plateau import InsufficientPlateauDataError
 from grid_analyzer.config import get_settings
 from grid_analyzer.constants import SCHEMA_VERSION
 from grid_analyzer.data.base import MarketDataProvider
@@ -31,6 +35,7 @@ from grid_analyzer.services.heatmap import build_heatmap_payload
 from grid_analyzer.services.intraday_heatmap import IntradayHeatmapService
 from grid_analyzer.services.intraday_research import InsufficientIntradayDataError
 from grid_analyzer.services.jobs import job_manager
+from grid_analyzer.services.plateau import PlateauService
 from grid_analyzer.services.research import run_parameter_sweep
 
 router = APIRouter()
@@ -204,3 +209,23 @@ def get_intraday_heatmap_job(job_id: str) -> IntradayJobStatusResponse:
             updated_at=job["updated_at"],
         )
     )
+
+
+@router.post("/api/plateau", response_model=PlateauResponse)
+def plateau(
+    request: PlateauRequest,
+    repository: IntradayRepository = Depends(get_intraday_repository),
+    quote_provider: MarketDataProvider = Depends(get_market_data_provider),
+) -> PlateauResponse:
+    service = PlateauService(repository, quote_provider)
+    try:
+        data = service.run(request)
+    except InsufficientPlateauDataError as exc:
+        raise HTTPException(400, str(exc))
+    except NoDataError as exc:
+        raise HTTPException(404, str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(502, str(exc))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return PlateauResponse(data=PlateauData.model_validate(data))

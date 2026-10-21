@@ -138,12 +138,54 @@
 
 前端使用该任务接口，避免长请求被反向代理超时截断。同步接口 `/api/intraday-heatmap` 仍保留，适合短参数或命令行调用。
 
+## POST /api/plateau
+
+实验性 ATR 归一化参数高原。以无量纲 k 为横轴，使用 5 分钟 K 线做 0/1 阶跃触线撮合，输出净收益率、闭环次数、孤岛、高原、先验重合和实盘步长还原。
+
+请求体主要字段：
+
+| 字段 | 默认值 | 说明 |
+|---|---|---|
+| `code` | 必填 | 股票代码 |
+| `grid_amount` | `10000` | 单格固定投入金额 M |
+| `fee` | `0.025` | 单边佣金 % |
+| `min_fee` | `5` | 单笔最低佣金 |
+| `spread_pct` | `0.05` | 买卖价差代理 % |
+| `friction_pct` | 空 | 可直接指定双边摩擦 C% |
+| `k_start` / `k_end` / `k_step` | `0.20 / 2.50 / 0.05` | k 扫描范围，默认 47 个值 |
+| `mode` | `dynamic` | `dynamic` 或 `static_mean` |
+| `atr_period` | `14` | 日线 ATR 周期 |
+| `plateau_window` | `5` | 高原滑动窗口点数 |
+| `plateau_stability_penalty` | `0.5` | 高原评分方差惩罚 |
+| `plateau_center_left_ratio` | `0.35` | 中心偏左位置比率 |
+| `island_drop_ratio` | `0.25` | 孤岛陡峭度阈值 |
+| `island_min_drop_pct` | `0.20` | 孤岛最小绝对跌幅 |
+| `front_run_thresholds` | `[1,2,3,5]` | 整数关口列表 |
+| `front_run_band_pct` | `0.08` | 触发抢跑修正的关口距离 |
+| `front_run_offset_pct` | `0.20` | 向下微调百分点 |
+| `pullback_sell_pct` / `rebound_buy_pct` | `0.30 / 0.30` | 拐点条件单参数 |
+| `history_days` | `500` | 拉取历史交易日数 |
+
+响应 `data` 包含：
+
+- `context`：最新 ATR、价格、数据区间、摩擦、安全底线
+- `k_values`：扫描的 k 列表
+- `curve`：每个 k 的 `net_return_pct`、`annualized_net_return_pct`、`loops`、`open_position_pnl_pct`、`below_safe`、`is_island`、`in_plateau`、`is_optimal` 等
+- `islands`：被剔除的孤岛点及左右跌幅
+- `plateau`：实测高原 `[k_left, k_right]`、`k_star`、均值、标准差、评分
+- `prior_validation`：与 `0.65–0.80 × ATR%` 先验带的重合关系
+- `live`：`d_raw_pct`、`d_exec_pct`、`k_exec`、整数关口修正、拐点触发参数
+- `summary`：k 数量、交易日数、摩擦、`k_min_safe`、孤岛数、样本内提示
+- `config` / `data_snapshot`：本次参数和数据快照
+
+该接口为同步调用，计算量远小于 5 分钟滚动 OOS；数据有效但找不到连续高原时返回 200 与 `plateau=null`，由前端展示原因；完全没有可用数据时返回 400/404。
+
 ## GET /api/health
 
 返回：
 
 ```json
-{"ok": true, "version": "2.3.0", "env": "development"}
+{"ok": true, "version": "2.4.0", "env": "development"}
 ```
 
 ## GET /api/version
@@ -151,7 +193,7 @@
 返回：
 
 ```json
-{"version": "2.3.0", "schema_version": 2}
+{"version": "2.4.0", "schema_version": 2}
 ```
 
 ## 错误响应

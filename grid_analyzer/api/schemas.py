@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from grid_analyzer.constants import SCHEMA_VERSION
 
@@ -384,3 +384,196 @@ class IntradayJobStatusResponse(ApiModel):
     ok: bool = True
     schema_version: int = SCHEMA_VERSION
     data: IntradayJobStatusData
+
+
+class PlateauRequest(ApiModel):
+    code: str
+    grid_amount: float = Field(10_000, ge=100, le=1e8)
+    fee: float = Field(0.025, ge=0, le=0.3)
+    min_fee: float = Field(5.0, ge=0, le=100)
+    spread_pct: float = Field(0.05, ge=0, le=5)
+    friction_pct: float | None = Field(None, ge=0, le=10)
+    k_start: float = Field(0.20, gt=0, le=10)
+    k_end: float = Field(2.50, gt=0, le=10)
+    k_step: float = Field(0.05, gt=0, le=1)
+    mode: Literal["dynamic", "static_mean"] = "dynamic"
+    atr_period: int = Field(14, ge=2, le=100)
+    plateau_window: int = Field(5, ge=2, le=21)
+    plateau_stability_penalty: float = Field(0.5, ge=0, le=5)
+    plateau_center_left_ratio: float = Field(0.35, ge=0, le=1)
+    island_drop_ratio: float = Field(0.25, ge=0, le=2)
+    island_min_drop_pct: float = Field(0.20, ge=0, le=100)
+    front_run_thresholds: list[float] = Field(
+        default_factory=lambda: [1.0, 2.0, 3.0, 5.0]
+    )
+    front_run_band_pct: float = Field(0.08, ge=0, le=1)
+    front_run_offset_pct: float = Field(0.20, ge=0, le=1)
+    pullback_sell_pct: float = Field(0.30, ge=0, le=5)
+    rebound_buy_pct: float = Field(0.30, ge=0, le=5)
+    history_days: int = Field(500, ge=60, le=3000)
+
+    @field_validator("front_run_thresholds")
+    @classmethod
+    def validate_front_run_thresholds(cls, value: list[float]) -> list[float]:
+        cleaned = sorted({float(item) for item in value if float(item) > 0})
+        if not cleaned:
+            raise ValueError("front_run_thresholds 不能为空")
+        return cleaned
+
+    @model_validator(mode="after")
+    def validate_k_range(self) -> "PlateauRequest":
+        if self.k_end <= self.k_start:
+            raise ValueError("k_end 必须大于 k_start")
+        return self
+
+
+class PlateauPoint(ApiModel):
+    k: float
+    net_return_pct: float
+    annualized_net_return_pct: float
+    gross_return_pct: float
+    friction_paid_pct: float
+    loops: int
+    winning_loops: int
+    avg_loop_return_pct: float
+    open_position_pnl_pct: float
+    total_return_pct: float
+    max_open_loss_pct: float
+    below_safe: bool
+    is_island: bool
+    in_plateau: bool
+    is_optimal: bool
+
+
+class PlateauIsland(ApiModel):
+    k: float
+    net_return_pct: float
+    left_drop_pct: float
+    right_drop_pct: float
+    threshold_pct: float
+
+
+class PlateauBand(ApiModel):
+    k_left: float
+    k_right: float
+    k_star: float
+    window_points: int
+    window_requested: int
+    window_adjusted: bool
+    mean_net_return_pct: float
+    stdev_net_return_pct: float
+    variance: float
+    plateau_score: float
+    mean_loops: float
+    total_loops: int
+    k_star_net_return_pct: float
+    k_star_loops: int
+    k_star_open_position_pnl_pct: float
+    k_star_total_return_pct: float
+    profitable: bool
+
+
+class PlateauPriorValidation(ApiModel):
+    prior_left: float
+    prior_right: float
+    prior_anchor: float
+    overlap_left: float | None = None
+    overlap_right: float | None = None
+    overlap_width: float
+    overlap_ratio: float
+    contains_anchor: bool
+    matches: bool
+    k_star_relation: str
+    warning: str | None = None
+
+
+class PlateauFrontRun(ApiModel):
+    adjusted: bool
+    threshold_pct: float | None = None
+    offset_pct: float
+    d_exec_pct: float
+    reason: str | None = None
+
+
+class PlateauBreakout(ApiModel):
+    base_step_pct: float
+    rebound_buy_pct: float
+    pullback_sell_pct: float
+    stretch_step_pct: float
+    buy_trigger_price: float
+    sell_trigger_price: float
+
+
+class PlateauLive(ApiModel):
+    k_star: float
+    latest_atr_pct: float
+    latest_price: float
+    d_raw_pct: float
+    d_raw_abs: float
+    d_exec_pct: float
+    d_exec_abs: float
+    k_exec: float
+    friction_pct: float
+    net_edge_pct: float
+    safe_floor_pct: float
+    front_run: PlateauFrontRun
+    breakout: PlateauBreakout
+    warnings: list[str] = Field(default_factory=list)
+
+
+class PlateauSummary(ApiModel):
+    k_count: int
+    bar_count: int
+    trading_days: int
+    mean_atr_pct: float
+    friction_pct: float
+    k_min_safe: float
+    forbidden_k_count: int
+    all_forbidden: bool
+    island_count: int
+    plateau_found: bool
+    positive_plateau: bool
+    raw_best_k: float
+    raw_best_net_return_pct: float
+    live_unavailable_reason: str | None = None
+    sample_note: str
+
+
+class PlateauContext(ApiModel):
+    code: str
+    name: str = ""
+    data_start: str
+    data_end: str
+    latest_daily_day: str
+    latest_price: float
+    latest_atr: float
+    latest_atr_pct: float
+    grid_amount: float
+    fee: float
+    min_fee: float
+    spread_pct: float
+    friction_pct: float
+    mean_atr_pct: float
+    k_min_safe: float
+    mode: str
+    bar_count: int
+    daily_count: int
+
+
+class PlateauData(ApiModel):
+    context: PlateauContext
+    k_values: list[float]
+    curve: list[PlateauPoint]
+    islands: list[PlateauIsland]
+    plateau: PlateauBand | None = None
+    prior_validation: PlateauPriorValidation
+    live: PlateauLive | None = None
+    summary: PlateauSummary
+    config: dict
+    data_snapshot: dict
+
+
+class PlateauResponse(ApiModel):
+    ok: bool = True
+    schema_version: int = SCHEMA_VERSION
+    data: PlateauData

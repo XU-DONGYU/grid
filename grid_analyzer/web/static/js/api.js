@@ -50,3 +50,12 @@ export async function fetchIntradayHeatmapJob(jobId) {
   const res = await fetch(`/api/intraday-heatmap/jobs/${encodeURIComponent(jobId)}`);
   return parseResponse(res, '查询 5 分钟参数高原任务失败');
 }
+
+export async function fetchPlateau(payload) {
+  const res = await fetch('/api/plateau', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return parseResponse(res, 'ATR 归一化参数高原计算失败，请稍后重试');
+}

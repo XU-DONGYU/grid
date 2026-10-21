@@ -1,8 +1,14 @@
 import { $ } from './dom.js';
-import { analyzeMarket, createIntradayHeatmapJob, fetchIntradayHeatmapJob } from './api.js';
+import {
+  analyzeMarket,
+  createIntradayHeatmapJob,
+  fetchIntradayHeatmapJob,
+  fetchPlateau,
+} from './api.js';
 import { render } from './render.js';
 import { toggleLayer } from './charts.js';
 import { renderIntradayHeatmap } from './intraday_heatmap.js';
+import { renderPlateau } from './plateau.js';
 
 const LS_KEY = 'grid_analyzer_input';
 
@@ -27,6 +33,16 @@ function saveInputs() {
       hmBlind: $('heatmap-final-blind-days').value,
       hmMinOos: $('heatmap-min-oos-days').value,
       hmHistory: $('heatmap-history-days').value,
+      plMode: $('plateau-mode').value,
+      plKStart: $('plateau-k-start').value,
+      plKEnd: $('plateau-k-end').value,
+      plKStep: $('plateau-k-step').value,
+      plGridAmount: $('plateau-grid-amount').value,
+      plWindow: $('plateau-window').value,
+      plSpread: $('plateau-spread').value,
+      plIslandRatio: $('plateau-island-ratio').value,
+      plFrontRunOffset: $('plateau-front-run-offset').value,
+      plHistory: $('plateau-history-days').value,
     }));
   } catch (e) {
     // localStorage may be unavailable in private mode.
@@ -62,6 +78,19 @@ function restoreInputs() {
     if (saved.hmBlind !== undefined && saved.hmBlind !== '') $('heatmap-final-blind-days').value = saved.hmBlind;
     if (saved.hmMinOos !== undefined && saved.hmMinOos !== '') $('heatmap-min-oos-days').value = saved.hmMinOos;
     if (saved.hmHistory !== undefined && saved.hmHistory !== '') $('heatmap-history-days').value = saved.hmHistory;
+    if (saved.plMode) {
+      const modeOptions = Array.from($('plateau-mode').options).map(option => option.value);
+      if (modeOptions.includes(saved.plMode)) $('plateau-mode').value = saved.plMode;
+    }
+    if (saved.plKStart !== undefined && saved.plKStart !== '') $('plateau-k-start').value = saved.plKStart;
+    if (saved.plKEnd !== undefined && saved.plKEnd !== '') $('plateau-k-end').value = saved.plKEnd;
+    if (saved.plKStep !== undefined && saved.plKStep !== '') $('plateau-k-step').value = saved.plKStep;
+    if (saved.plGridAmount !== undefined && saved.plGridAmount !== '') $('plateau-grid-amount').value = saved.plGridAmount;
+    if (saved.plWindow !== undefined && saved.plWindow !== '') $('plateau-window').value = saved.plWindow;
+    if (saved.plSpread !== undefined && saved.plSpread !== '') $('plateau-spread').value = saved.plSpread;
+    if (saved.plIslandRatio !== undefined && saved.plIslandRatio !== '') $('plateau-island-ratio').value = saved.plIslandRatio;
+    if (saved.plFrontRunOffset !== undefined && saved.plFrontRunOffset !== '') $('plateau-front-run-offset').value = saved.plFrontRunOffset;
+    if (saved.plHistory !== undefined && saved.plHistory !== '') $('plateau-history-days').value = saved.plHistory;
     syncSingleUI();
   } catch (e) {
     // Ignore malformed or unavailable local storage.
@@ -195,12 +224,67 @@ async function generateHeatmap() {
   }
 }
 
+async function generatePlateau() {
+  const code = $('code').value.trim();
+  if (!code) {
+    $('plateau-status').textContent = '请先输入股票代码';
+    return;
+  }
+  const fee = parseFloat($('fee').value) || 0;
+  const minfee = Math.max(0, parseFloat($('minfee').value) || 0);
+  const gridAmount = Math.max(100, parseFloat($('plateau-grid-amount').value) || 10000);
+  const spread = Math.max(0, parseFloat($('plateau-spread').value) || 0);
+  const islandRatio = Math.max(0, parseFloat($('plateau-island-ratio').value) || 0.25);
+  const frontRunOffset = Math.max(0, parseFloat($('plateau-front-run-offset').value) || 0.2);
+  const historyDays = Math.max(60, parseInt($('plateau-history-days').value, 10) || 500);
+  const kStart = parseFloat($('plateau-k-start').value);
+  const kEnd = parseFloat($('plateau-k-end').value);
+  const kStep = parseFloat($('plateau-k-step').value);
+  const windowPoints = Math.max(2, parseInt($('plateau-window').value, 10) || 5);
+  if ([kStart, kEnd, kStep].some(value => !Number.isFinite(value))) {
+    $('plateau-status').textContent = 'k 范围需要有效数字';
+    return;
+  }
+  if (kStart <= 0 || kEnd <= kStart || kStep <= 0) {
+    $('plateau-status').textContent = 'k 范围必须满足 0 < 起点 < 终点，步长 > 0';
+    return;
+  }
+
+  saveInputs();
+  $('plateau-btn').disabled = true;
+  $('plateau-status').textContent = '正在拉取 5 分钟数据并扫描 k 曲线…';
+  $('plateau-wrap').innerHTML = '';
+  try {
+    const data = await fetchPlateau({
+      code,
+      grid_amount: gridAmount,
+      fee,
+      min_fee: minfee,
+      spread_pct: spread,
+      k_start: kStart,
+      k_end: kEnd,
+      k_step: kStep,
+      mode: $('plateau-mode').value,
+      plateau_window: windowPoints,
+      island_drop_ratio: islandRatio,
+      front_run_offset_pct: frontRunOffset,
+      history_days: historyDays,
+    });
+    renderPlateau(data, $('plateau-wrap'));
+    $('plateau-status').textContent = `计算完成：${data.k_values.length} 个 k 值，剔除 ${data.summary.island_count} 个孤岛`;
+  } catch (e) {
+    $('plateau-status').textContent = e.message;
+  } finally {
+    $('plateau-btn').disabled = false;
+  }
+}
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function initToc() {
-  const ids = ['p-stock', 'p-axis', 'p-grid', 'p-chart', 'p-bt', 'p-heatmap', 'p-risk'];
+  const ids = ['p-stock', 'p-axis', 'p-grid', 'p-chart', 'p-bt', 'p-heatmap', 'p-plateau', 'p-risk'];
   const links = Array.from(document.querySelectorAll('#toc a'));
   const secs = ids.map(id => document.getElementById(id)).filter(Boolean);
   if (!('IntersectionObserver' in window)) return;
@@ -220,6 +304,7 @@ $('single').addEventListener('change', syncSingleUI);
 $('layer-main').addEventListener('click', () => toggleLayer('main'));
 $('layer-aux').addEventListener('click', () => toggleLayer('aux'));
 $('heatmap-btn').addEventListener('click', generateHeatmap);
+$('plateau-btn').addEventListener('click', generatePlateau);
 
 restoreInputs();
 initToc();
