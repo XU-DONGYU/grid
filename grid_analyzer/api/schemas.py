@@ -422,6 +422,9 @@ class PlateauRequest(ApiModel):
     price_limit_pct: float = Field(10.0, ge=0, le=50)
     min_bars_per_day: int = Field(1, ge=1, le=100)
     holdout_ratio: float = Field(0.30, ge=0, le=0.8)
+    stop_loss_pct: float = Field(5.0, ge=0, le=50)
+    restart_cooldown_days: int = Field(0, ge=0, le=60)
+    compare_anchor_policies: bool = False
     history_days: int = Field(500, ge=60, le=3000)
 
     @field_validator("front_run_thresholds")
@@ -468,6 +471,10 @@ class PlateauPoint(ApiModel):
     capital_constrained_buys: int
     limit_locked_days: int
     incomplete_days: int
+    stop_count: int
+    restart_count: int
+    stopped_days: int
+    last_stop_day: str | None = None
     below_safe: bool
     is_island: bool
     in_plateau: bool
@@ -503,6 +510,8 @@ class PlateauBand(ApiModel):
     k_star_capital_return_pct: float
     k_star_max_positions_used: int
     k_star_open_position_count: int
+    k_star_stop_count: int
+    k_star_restart_count: int
     profitable: bool
 
 
@@ -590,6 +599,8 @@ class PlateauSummary(ApiModel):
     lot_size: int
     slippage_pct: float
     price_limit_pct: float
+    stop_loss_pct: float
+    restart_cooldown_days: int
     open_loss_penalty: float
     holdout_enabled: bool
     holdout_reason: str | None = None
@@ -632,8 +643,30 @@ class PlateauContext(ApiModel):
     anchor_policy: str
     lot_size: int
     price_limit_pct: float
+    stop_loss_pct: float
+    restart_cooldown_days: int
     bar_count: int
     daily_count: int
+
+
+class PlateauPolicyComparison(ApiModel):
+    anchor_policy: str
+    status: str
+    error: str | None = None
+    k_left: float | None = None
+    k_right: float | None = None
+    k_star: float | None = None
+    profitable: bool | None = None
+    in_sample_net_return_pct: float | None = None
+    in_sample_capital_return_pct: float | None = None
+    holdout_net_return_pct: float | None = None
+    holdout_positive: bool | None = None
+    live_d_exec_pct: float | None = None
+    stop_count: int | None = None
+    restart_count: int | None = None
+    plateau_at_right_edge: bool | None = None
+    plateau_at_safe_boundary: bool | None = None
+    note: str | None = None
 
 
 class PlateauData(ApiModel):
@@ -646,6 +679,7 @@ class PlateauData(ApiModel):
     holdout: PlateauHoldout
     live: PlateauLive | None = None
     summary: PlateauSummary
+    policy_comparison: list[PlateauPolicyComparison] = Field(default_factory=list)
     config: dict
     data_snapshot: dict
 

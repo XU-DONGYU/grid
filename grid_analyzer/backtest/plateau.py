@@ -56,6 +56,8 @@ class PlateauConfig:
     price_limit_pct: float = 10.0
     min_bars_per_day: int = 1
     holdout_ratio: float = 0.30
+    stop_loss_pct: float = 5.0
+    restart_cooldown_days: int = 0
 
 
 @dataclass(frozen=True)
@@ -341,6 +343,13 @@ def simulate_k(
     capital_constrained_buys = 0
     limit_locked_days = 0
     incomplete_days = 0
+    stopped = False
+    post_stop_rolling = False
+    restart_day_index = 0
+    stop_count = 0
+    restart_count = 0
+    stopped_days = 0
+    last_stop_day: str | None = None
     # Half-spread on each side plus explicit slippage/impact proxy.
     slip = (
         max(0.0, float(config.slippage_pct))
@@ -409,6 +418,18 @@ def simulate_k(
         peak_invested = max(peak_invested, invested())
         return True
 
+    def trigger_stop(fill_price: float) -> None:
+        nonlocal stopped, post_stop_rolling, restart_day_index
+        nonlocal stop_count, last_stop_day
+        for lot in list(open_lots):
+            if lot["buy_day"] < day:
+                close_lot(lot, fill_price)
+        stopped = True
+        post_stop_rolling = True
+        restart_day_index = day_index.get(day, 0) + max(1, int(config.restart_cooldown_days) + 1)
+        stop_count += 1
+        last_stop_day = day
+
     for day in days:
         bars = bars_by_day.get(day) or []
         if not bars:
@@ -420,11 +441,37 @@ def simulate_k(
 
         step = day_steps.get(day)
         step_abs = step.step_abs if step is not None else 0.0
-        anchor = step.anchor if step is not None else float(bars[0]["open"])
-        levels = _day_levels(anchor, step_abs, max_positions) if step_abs > 0 else []
-        used_levels: set[int] = set()
         open_price = float(bars[0]["open"])
         prev_close = step.prev_close if step is not None else 0.0
+        day_number = day_index.get(day, 0)
+
+        if stopped:
+            if day_number < restart_day_index:
+                stopped_days += 1
+                last_price = float(bars[-1]["close"])
+                last_day = day
+                for lot in list(open_lots):
+                    if lot["buy_day"] < day:
+                        close_lot(lot, open_price)
+                mark_to_market = sum(
+                    (last_price - float(lot["price"])) * float(lot["shares"])
+                    for lot in open_lots
+                ) / config.grid_amount * 100.0
+                max_open_loss_pct = min(max_open_loss_pct, mark_to_market)
+                continue
+            stopped = False
+            restart_count += 1
+
+        if post_stop_rolling and prev_close > 0:
+            anchor = prev_close
+        else:
+            anchor = step.anchor if step is not None else open_price
+        levels = _day_levels(anchor, step_abs, max_positions) if step_abs > 0 else []
+        used_levels: set[int] = set()
+        stop_price = None
+        if config.stop_loss_pct > 0 and levels:
+            lower_bound = min(level for _, level in levels)
+            stop_price = lower_bound * (1.0 - max(0.0, float(config.stop_loss_pct)) / 100.0)
 
         limit_locked = False
         if config.price_limit_pct > 0 and prev_close > 0:
@@ -442,6 +489,12 @@ def simulate_k(
             max_open_loss_pct = min(max_open_loss_pct, mark_to_market)
             continue
 
+        if stop_price is not None and open_price <= stop_price:
+            trigger_stop(open_price)
+            last_price = float(bars[-1]["close"])
+            last_day = day
+            continue
+
         # Gap handling: sell filled lots whose target is below the open, then
         # fill any buy levels that the open already gapped through.
         for lot in list(open_lots):
@@ -455,6 +508,7 @@ def simulate_k(
                     used_levels.add(level_index)
         max_positions_used = max(max_positions_used, len(open_lots))
 
+        stopped_today = False
         for bar in bars:
             path = _bar_path(bar)
             last_price = float(bar["close"])
@@ -466,14 +520,19 @@ def simulate_k(
                         target = float(lot["target"])
                         if lot["buy_day"] < day and previous < target <= current:
                             close_lot(lot, target)
-                elif current < previous and step_abs > 0:
-                    for level_index, level in levels:
-                        if len(open_lots) >= max_positions:
-                            break
-                        if level_index in used_levels:
-                            continue
-                        if current <= level < previous and open_lot(level, level_index, step_abs):
-                            used_levels.add(level_index)
+                elif current < previous:
+                    if stop_price is not None and current <= stop_price:
+                        trigger_stop(stop_price)
+                        stopped_today = True
+                        break
+                    if step_abs > 0:
+                        for level_index, level in levels:
+                            if len(open_lots) >= max_positions:
+                                break
+                            if level_index in used_levels:
+                                continue
+                            if current <= level < previous and open_lot(level, level_index, step_abs):
+                                used_levels.add(level_index)
 
             max_positions_used = max(max_positions_used, len(open_lots))
             position_sum += len(open_lots)
@@ -483,6 +542,8 @@ def simulate_k(
                 for lot in open_lots
             ) / config.grid_amount * 100.0
             max_open_loss_pct = min(max_open_loss_pct, mark_to_market)
+            if stopped_today:
+                break
 
     open_positions = [
         {
@@ -534,6 +595,10 @@ def simulate_k(
         "capital_constrained_buys": capital_constrained_buys,
         "limit_locked_days": limit_locked_days,
         "incomplete_days": incomplete_days,
+        "stop_count": stop_count,
+        "restart_count": restart_count,
+        "stopped_days": stopped_days,
+        "last_stop_day": last_stop_day,
         "first_trade_day": first_trade_day,
         "last_trade_day": last_trade_day,
         "open_positions": open_positions,
@@ -643,6 +708,8 @@ def select_plateau(
         "k_star_capital_return_pct": float(center.get("capital_return_pct", 0.0)),
         "k_star_max_positions_used": int(center.get("max_positions_used", 0)),
         "k_star_open_position_count": int(center.get("open_position_count", 0)),
+        "k_star_stop_count": int(center.get("stop_count", 0)),
+        "k_star_restart_count": int(center.get("restart_count", 0)),
         "profitable": mean > 0 and net_mean > 0,
     }
 
@@ -872,6 +939,10 @@ def run_plateau_scan(
                 "capital_constrained_buys": simulation["capital_constrained_buys"],
                 "limit_locked_days": simulation["limit_locked_days"],
                 "incomplete_days": simulation["incomplete_days"],
+                "stop_count": simulation["stop_count"],
+                "restart_count": simulation["restart_count"],
+                "stopped_days": simulation["stopped_days"],
+                "last_stop_day": simulation["last_stop_day"],
                 "below_safe": below_safe,
                 "is_island": False,
                 "in_plateau": False,
@@ -992,6 +1063,8 @@ def run_plateau_scan(
         "lot_size": config.lot_size,
         "slippage_pct": config.slippage_pct,
         "price_limit_pct": config.price_limit_pct,
+        "stop_loss_pct": config.stop_loss_pct,
+        "restart_cooldown_days": config.restart_cooldown_days,
         "open_loss_penalty": config.open_loss_penalty,
         "holdout_enabled": bool(oos_days and plateau is not None),
         "holdout_reason": holdout["reason"],

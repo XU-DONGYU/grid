@@ -180,6 +180,7 @@ function contextCard(data) {
     <div><span>安全底线 k<sub>min</sub></span><b>${num(context.k_min_safe, 3)}</b></div>
     <div><span>最大持仓 / 网格资金</span><b>${fmt(context.max_positions, 0)} 格 / ${fmt(context.grid_capital, 0)} 元</b></div>
     <div><span>整手 / 滑点 / 涨跌停</span><b>${fmt(context.lot_size, 0)} 股 / ${pct(context.slippage_pct)} / ${pct(context.price_limit_pct)}</b></div>
+    <div><span>破网止损 / 重启冷却</span><b>${pct(context.stop_loss_pct)} / ${fmt(context.restart_cooldown_days, 0)} 天</b></div>
     <div><span>最小闭环 / 浮亏惩罚</span><b>${fmt(data.summary?.min_loops, 0)} / ${fmt(data.summary?.open_loss_penalty, 2)}</b></div>
     <div><span>5 分钟数据</span><b>${esc(context.data_start)} ~ ${esc(context.data_end)}（${fmt(context.bar_count, 0)} 根）</b></div>
   </div>`;
@@ -336,6 +337,68 @@ function priorCard(data) {
   </div>`;
 }
 
+const POLICY_TEXT = {
+  daily_roll: '每日重锚',
+  fixed_band: '区间边界重锚',
+  fixed: '固定锚点',
+  periodic: '周期重锚',
+};
+
+function policyRowsMarkup(rows, currentPolicy) {
+  const body = rows.map(row => {
+    if (row.status === 'error') {
+      return `<tr>
+        <td>${esc(POLICY_TEXT[row.anchor_policy] || row.anchor_policy)}</td>
+        <td colspan="7" class="down">${esc(row.error || '计算失败')}</td>
+      </tr>`;
+    }
+    const plateauText = row.k_left === null || row.k_left === undefined
+      ? '未识别'
+      : `${fmt(row.k_left, 2)} – ${fmt(row.k_right, 2)}`;
+    const status = row.note
+      ? `<span class="bt-tag stop">${esc(row.note)}</span>`
+      : row.holdout_positive === false
+        ? '<span class="bt-tag stop">留出未盈利</span>'
+        : '<span class="bt-tag ok">可用</span>';
+    return `<tr class="${row.anchor_policy === currentPolicy ? 'now' : ''}">
+      <td>${esc(POLICY_TEXT[row.anchor_policy] || row.anchor_policy)}</td>
+      <td>${plateauText}</td>
+      <td class="num">${row.k_star === null || row.k_star === undefined ? '—' : fmt(row.k_star, 3)}</td>
+      <td class="num">${pct(row.in_sample_net_return_pct)}</td>
+      <td class="num">${pct(row.holdout_net_return_pct)}</td>
+      <td class="num">${pct(row.live_d_exec_pct)}</td>
+      <td class="num">${row.stop_count === null || row.stop_count === undefined ? '—' : `${fmt(row.stop_count, 0)} / ${fmt(row.restart_count, 0)}`}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="table-scroll">
+    <table class="intraday-table" style="min-width:820px">
+      <thead><tr><th>策略</th><th>高原</th><th>k*</th><th>样本内单格</th><th>留出单格</th><th>实盘步长</th><th>止损 / 重启</th><th>状态</th></tr></thead>
+      <tbody>${body}</tbody>
+    </table>
+  </div>`;
+}
+
+function policyTable(data) {
+  const rows = data.policy_comparison || [];
+  return `<div class="plateau-prior-card" style="margin-top:12px">
+    <div class="blind-title">四种锚定策略自动对照</div>
+    <div id="plateau-policy-table">${policyRowsMarkup(rows, data.context?.anchor_policy)}</div>
+    <div class="note">高原在不同锚定策略下越接近，参数越稳健；差异很大时，不应只采用单一策略的 k*。</div>
+  </div>`;
+}
+
+const POLICY_ORDER = ['daily_roll', 'fixed_band', 'fixed', 'periodic'];
+
+export function updatePolicyComparison(rows, currentPolicy, container) {
+  const target = container.querySelector('#plateau-policy-table');
+  if (!target) return;
+  const sorted = [...rows].sort(
+    (left, right) => POLICY_ORDER.indexOf(left.anchor_policy) - POLICY_ORDER.indexOf(right.anchor_policy)
+  );
+  target.innerHTML = policyRowsMarkup(sorted, currentPolicy);
+}
+
 function curveTable(data) {
   const rows = data.curve.map(point => `<tr class="${point.is_optimal ? 'now' : ''}">
     <td class="num">${fmt(point.k, 2)}</td>
@@ -347,13 +410,14 @@ function curveTable(data) {
     <td class="num">${pct(point.avg_loop_return_pct)}</td>
     <td class="num">${pct(point.open_position_pnl_pct)}</td>
     <td class="num">${fmt(point.max_positions_used, 0)} / ${fmt(point.max_positions, 0)}</td>
+    <td class="num">${fmt(point.stop_count, 0)} / ${fmt(point.restart_count, 0)}</td>
     <td>${point.below_safe ? '手续费禁区' : point.is_island ? '孤岛' : point.is_optimal ? 'k*' : point.in_plateau ? '高原' : ''}</td>
   </tr>`).join('');
   return `<details class="intraday-details">
     <summary>完整 k 扫描明细</summary>
     <div class="table-scroll">
       <table class="intraday-table">
-        <thead><tr><th>k</th><th>单格净收益</th><th>占网格资金</th><th>选参值</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>最大持仓</th><th>标记</th></tr></thead>
+        <thead><tr><th>k</th><th>单格净收益</th><th>占网格资金</th><th>选参值</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>最大持仓</th><th>止损/重启</th><th>标记</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -376,6 +440,7 @@ export function renderPlateau(data, container) {
       ${breakoutCard(data)}
       ${priorCard(data)}
     </div>
+    ${policyTable(data)}
     ${curveTable(data)}
     <div class="note">实验模块：以 k × ATR(14)% 为唯一横轴，使用 0/1 阶跃触线撮合。按所选锚定策略布置阶梯，最多持有 N 个单格资金槽位，按格线成交，卖出受 T+1 约束；已处理 A 股整手、现金上限、滑点、涨跌停锁定和停牌/缺失日。默认前 70% 样本内选参、后 30% 留出验证，选参时对期末浮亏按惩罚系数扣减。结果不构成投资建议，也不替代滚动样本外验证和最终盲测。</div>
   `;

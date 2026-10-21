@@ -1,7 +1,20 @@
 const SUPPORTED_SCHEMA_VERSION = 2;
 
 async function parseResponse(res, fallbackMessage) {
-  const json = await res.json();
+  const text = await res.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (error) {
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('text/html') || text.trimStart().startsWith('<')) {
+      throw new Error(
+        `接口返回了 HTML 页面（HTTP ${res.status}）。通常表示后端未重启、/api/plateau 路由不存在，或反向代理返回了错误页。`
+        + ' 请先重启 grid.service，并确认反向代理把 /api/ 请求转发到 FastAPI；然后刷新页面重试。'
+      );
+    }
+    throw new Error(`接口返回内容不是合法 JSON（HTTP ${res.status}）：${text.slice(0, 120) || fallbackMessage}`);
+  }
   if (!res.ok || !json.ok) {
     let detail = json.detail;
     if (Array.isArray(detail)) detail = detail.map(x => x.msg).join('；');

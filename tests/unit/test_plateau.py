@@ -287,6 +287,74 @@ def test_slippage_reduces_net_return() -> None:
     assert slipped["slippage_paid_pct"] > 0
 
 
+def test_stop_loss_liquidates_and_restarts_band() -> None:
+    day_steps = {
+        "2025-01-02": _DayStep(
+            "2025-01-02", step_pct=2.0, step_abs=2.0, atr_pct=2.0, anchor=100.0, prev_close=100.0
+        ),
+        "2025-01-03": _DayStep(
+            "2025-01-03", step_pct=2.0, step_abs=2.0, atr_pct=2.0, anchor=100.0, prev_close=100.0
+        ),
+        "2025-01-06": _DayStep(
+            "2025-01-06", step_pct=2.0, step_abs=2.0, atr_pct=2.0, anchor=90.0, prev_close=90.0
+        ),
+        "2025-01-07": _DayStep(
+            "2025-01-07", step_pct=2.0, step_abs=2.0, atr_pct=2.0, anchor=90.0, prev_close=90.0
+        ),
+    }
+    bars_by_day = {
+        "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 100, 97)],
+        "2025-01-03": [bar("2025-01-03", "09:35", 90, 90, 90, 89)],
+        "2025-01-06": [bar("2025-01-06", "09:35", 90, 90, 90, 87)],
+        "2025-01-07": [bar("2025-01-07", "09:35", 90, 90, 90, 89)],
+    }
+    result = simulate_k(
+        bars_by_day,
+        day_steps,
+        make_config(max_positions=1, stop_loss_pct=5.0, restart_cooldown_days=0),
+    )
+    assert result["stop_count"] == 1
+    assert result["restart_count"] == 1
+    assert result["last_stop_day"] == "2025-01-03"
+    assert result["loops"] == 1
+    assert result["open_position_count"] == 0
+
+
+def test_stop_loss_cooldown_delays_restart() -> None:
+    day_steps = {
+        "2025-01-02": _DayStep(
+            "2025-01-02", step_pct=2.0, step_abs=2.0, atr_pct=2.0, anchor=100.0, prev_close=100.0
+        ),
+        "2025-01-03": _DayStep(
+            "2025-01-03", step_pct=2.0, step_abs=2.0, atr_pct=2.0, anchor=100.0, prev_close=100.0
+        ),
+        "2025-01-06": _DayStep(
+            "2025-01-06", step_pct=2.0, step_abs=2.0, atr_pct=2.0, anchor=90.0, prev_close=90.0
+        ),
+        "2025-01-07": _DayStep(
+            "2025-01-07", step_pct=2.0, step_abs=2.0, atr_pct=2.0, anchor=90.0, prev_close=90.0
+        ),
+        "2025-01-08": _DayStep(
+            "2025-01-08", step_pct=2.0, step_abs=2.0, atr_pct=2.0, anchor=90.0, prev_close=90.0
+        ),
+    }
+    bars_by_day = {
+        "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 100, 97)],
+        "2025-01-03": [bar("2025-01-03", "09:35", 90, 90, 90, 89)],
+        "2025-01-06": [bar("2025-01-06", "09:35", 90, 90, 90, 87)],
+        "2025-01-07": [bar("2025-01-07", "09:35", 90, 90, 90, 87)],
+        "2025-01-08": [bar("2025-01-08", "09:35", 90, 90, 90, 89)],
+    }
+    result = simulate_k(
+        bars_by_day,
+        day_steps,
+        make_config(max_positions=1, stop_loss_pct=5.0, restart_cooldown_days=1),
+    )
+    assert result["stop_count"] == 1
+    assert result["stopped_days"] == 1
+    assert result["restart_count"] == 1
+
+
 def test_price_limit_lock_blocks_fills() -> None:
     day_steps = {
         "2025-01-02": _DayStep(

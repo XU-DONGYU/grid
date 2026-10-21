@@ -157,3 +157,16 @@
   .intraday-details summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--text2)}
   .intraday-table{min-width:760px}
   .intraday-table th{white-space:nowrap}
+
+  /* ---- 参数解释浮窗 ---- */
+  .param-label{cursor:help;border-bottom:1px dashed #b6c0cf;display:inline-block;line-height:1.2}
+  .param-label:hover{color:var(--blue)}
+  #param-tip{
+    position:fixed;z-index:9999;max-width:340px;background:#1f2733;color:#fff;border-radius:9px;
+    padding:10px 12px;font-size:12px;line-height:1.55;box-shadow:0 8px 24px rgba(16,35,72,.28);
+    pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .12s,transform .12s;
+  }
+  #param-tip.show{opacity:1;transform:translateY(0)}
+  #param-tip::after{content:"";position:absolute;left:18px;bottom:-5px;width:10px;height:10px;background:#1f2733;transform:rotate(45deg)}
+  #param-tip.above::after{bottom:auto;top:-5px}
+  @media(max-width:640px){#param-tip{max-width:calc(100vw - 24px)!important}}

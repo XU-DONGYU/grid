@@ -190,11 +190,25 @@ selection_value = net_return_pct - open_loss_penalty × max(0, -期末浮盈亏)
 
 实际费用使用佣金（含最低佣金）、卖出印花税和滑点；`C%` 只用于理论安全底线。高原选择使用 `selection_value`，并过滤闭环次数低于 `min_loops` 的点。期末浮盈亏、最大持仓、现金占用和滑点成本单独展示。
 
+### 破网止损与区间重启
+
+```text
+lower_bound = min(当前交易日买档)
+stop_price  = lower_bound × (1 - stop_loss_pct / 100)
+```
+
+- 价格跌破 `stop_price` 后清仓 T+1 已解锁持仓，并停止新买入。
+- 当日买入的仓位受 T+1 限制，在后续可卖日按开盘价处理。
+- 等待 `restart_cooldown_days` 个交易日后，用前收盘价作为新锚点重启阶梯。
+- 止损是区间重置：第一次止损前的原始锚定策略生效，重启后转为滚动锚点。
+- 输出 `stop_count`、`restart_count`、`stopped_days`、`last_stop_day`。
+
 ### 样本内选参与留出验证
 
 - 默认前 70% 交易日生成样本内曲线并选参。
 - 后 30% 交易日只评估锁定的 `k*`，不参与选参。
 - 留出验证是单段验证，不替代现有滚动 OOS 和最终盲测。
+- 自动对照 `daily_roll`、`fixed_band`、`fixed`、`periodic` 四种锚定策略；单策略失败不阻断其他行。
 
 ### 孤岛与高原
 

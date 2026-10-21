@@ -108,6 +108,7 @@ def test_plateau_contract(plateau_client: TestClient) -> None:
             "plateau_window": 3,
             "history_days": 60,
             "mode": "dynamic",
+            "compare_anchor_policies": True,
         },
     )
     assert response.status_code == 200
@@ -132,6 +133,10 @@ def test_plateau_contract(plateau_client: TestClient) -> None:
     assert contract.data.holdout.enabled is True
     assert contract.data.holdout.k_star == contract.data.plateau.k_star
     assert contract.data.holdout.net_return_pct is not None
+    assert len(contract.data.policy_comparison) == 4
+    assert {row.anchor_policy for row in contract.data.policy_comparison} == {
+        "daily_roll", "fixed_band", "fixed", "periodic"
+    }
     assert contract.data.data_snapshot["source"] == "BaoStock"
 
 

@@ -8,7 +8,7 @@ import {
 import { render } from './render.js';
 import { toggleLayer } from './charts.js';
 import { renderIntradayHeatmap } from './intraday_heatmap.js';
-import { renderPlateau } from './plateau.js';
+import { renderPlateau, updatePolicyComparison } from './plateau.js';
 
 const LS_KEY = 'grid_analyzer_input';
 
@@ -45,6 +45,9 @@ function saveInputs() {
       plSlippage: $('plateau-slippage').value,
       plLotSize: $('plateau-lot-size').value,
       plPriceLimit: $('plateau-price-limit').value,
+      plStopLoss: $('plateau-stop-loss').value,
+      plRestartCooldown: $('plateau-restart-cooldown').value,
+      plCompare: $('plateau-compare').checked,
       plMinLoops: $('plateau-min-loops').value,
       plOpenLossPenalty: $('plateau-open-loss-penalty').value,
       plHoldoutRatio: $('plateau-holdout-ratio').value,
@@ -104,6 +107,9 @@ function restoreInputs() {
     if (saved.plSlippage !== undefined && saved.plSlippage !== '') $('plateau-slippage').value = saved.plSlippage;
     if (saved.plLotSize !== undefined && saved.plLotSize !== '') $('plateau-lot-size').value = saved.plLotSize;
     if (saved.plPriceLimit !== undefined && saved.plPriceLimit !== '') $('plateau-price-limit').value = saved.plPriceLimit;
+    if (saved.plStopLoss !== undefined && saved.plStopLoss !== '') $('plateau-stop-loss').value = saved.plStopLoss;
+    if (saved.plRestartCooldown !== undefined && saved.plRestartCooldown !== '') $('plateau-restart-cooldown').value = saved.plRestartCooldown;
+    if (saved.plCompare !== undefined) $('plateau-compare').checked = Boolean(saved.plCompare);
     if (saved.plMinLoops !== undefined && saved.plMinLoops !== '') $('plateau-min-loops').value = saved.plMinLoops;
     if (saved.plOpenLossPenalty !== undefined && saved.plOpenLossPenalty !== '') $('plateau-open-loss-penalty').value = saved.plOpenLossPenalty;
     if (saved.plHoldoutRatio !== undefined && saved.plHoldoutRatio !== '') $('plateau-holdout-ratio').value = saved.plHoldoutRatio;
@@ -243,6 +249,82 @@ async function generateHeatmap() {
   }
 }
 
+const ANCHOR_POLICIES = ['daily_roll', 'fixed_band', 'fixed', 'periodic'];
+
+function plateauRowFromResult(policy, data) {
+  const plateau = data.plateau;
+  const holdout = data.holdout || {};
+  const summary = data.summary || {};
+  let note = null;
+  if (!plateau) note = '未识别到合规高原';
+  else if (!plateau.profitable) note = '合规高原没有正选参值';
+  else if (summary.plateau_at_right_edge) note = '高原顶到 k 右边界';
+  return {
+    anchor_policy: policy,
+    status: 'ok',
+    error: null,
+    k_left: plateau?.k_left ?? null,
+    k_right: plateau?.k_right ?? null,
+    k_star: plateau?.k_star ?? null,
+    profitable: plateau?.profitable ?? null,
+    in_sample_net_return_pct: plateau?.k_star_net_return_pct ?? null,
+    in_sample_capital_return_pct: plateau?.k_star_capital_return_pct ?? null,
+    holdout_net_return_pct: holdout.net_return_pct ?? null,
+    holdout_positive: holdout.positive ?? null,
+    live_d_exec_pct: data.live?.d_exec_pct ?? null,
+    stop_count: plateau?.k_star_stop_count ?? null,
+    restart_count: plateau?.k_star_restart_count ?? null,
+    plateau_at_right_edge: summary.plateau_at_right_edge ?? null,
+    plateau_at_safe_boundary: summary.plateau_at_safe_boundary ?? null,
+    note,
+  };
+}
+
+function failedPolicyRow(policy, error) {
+  return {
+    anchor_policy: policy,
+    status: 'error',
+    error: error?.message || String(error),
+    k_left: null,
+    k_right: null,
+    k_star: null,
+    profitable: null,
+    in_sample_net_return_pct: null,
+    in_sample_capital_return_pct: null,
+    holdout_net_return_pct: null,
+    holdout_positive: null,
+    live_d_exec_pct: null,
+    stop_count: null,
+    restart_count: null,
+    plateau_at_right_edge: null,
+    plateau_at_safe_boundary: null,
+    note: '该策略计算失败',
+  };
+}
+
+async function loadPolicyComparison(payload, mainData, container) {
+  const rows = [plateauRowFromResult(payload.anchor_policy, mainData)];
+  updatePolicyComparison(rows, payload.anchor_policy, container);
+  let done = 1;
+  for (const policy of ANCHOR_POLICIES) {
+    if (policy === payload.anchor_policy) continue;
+    $('plateau-status').textContent = `图表已生成，正在对照锚定策略 ${done + 1}/4…`;
+    try {
+      const compared = await fetchPlateau({
+        ...payload,
+        anchor_policy: policy,
+        compare_anchor_policies: false,
+      });
+      rows.push(plateauRowFromResult(policy, compared));
+    } catch (error) {
+      rows.push(failedPolicyRow(policy, error));
+    }
+    done += 1;
+    updatePolicyComparison(rows, payload.anchor_policy, container);
+  }
+  $('plateau-status').textContent = '计算完成：已生成四种锚定策略对照表';
+}
+
 async function generatePlateau() {
   const code = $('code').value.trim();
   if (!code) {
@@ -257,6 +339,9 @@ async function generatePlateau() {
   const slippage = Math.max(0, parseFloat($('plateau-slippage').value) || 0);
   const lotSize = Math.max(0, parseInt($('plateau-lot-size').value, 10) || 0);
   const priceLimit = Math.max(0, parseFloat($('plateau-price-limit').value) || 0);
+  const stopLoss = Math.max(0, parseFloat($('plateau-stop-loss').value) || 0);
+  const restartCooldown = Math.max(0, parseInt($('plateau-restart-cooldown').value, 10) || 0);
+  const comparePolicies = $('plateau-compare').checked;
   const minLoops = Math.max(0, parseInt($('plateau-min-loops').value, 10) || 0);
   const openLossPenalty = Math.max(0, parseFloat($('plateau-open-loss-penalty').value) || 0.5);
   const holdoutValue = parseFloat($('plateau-holdout-ratio').value);
@@ -279,34 +364,43 @@ async function generatePlateau() {
 
   saveInputs();
   $('plateau-btn').disabled = true;
-  $('plateau-status').textContent = '正在拉取 5 分钟数据并扫描 k 曲线…';
+  $('plateau-status').textContent = comparePolicies
+    ? '正在计算主策略图表，完成后再自动对照其余策略…'
+    : '正在拉取 5 分钟数据并扫描 k 曲线…';
   $('plateau-wrap').innerHTML = '';
+  const payload = {
+    code,
+    grid_amount: gridAmount,
+    max_positions: maxPositions,
+    lot_size: lotSize,
+    fee,
+    min_fee: minfee,
+    spread_pct: spread,
+    slippage_pct: slippage,
+    price_limit_pct: priceLimit,
+    stop_loss_pct: stopLoss,
+    restart_cooldown_days: restartCooldown,
+    compare_anchor_policies: false,
+    min_loops: minLoops,
+    open_loss_penalty: openLossPenalty,
+    holdout_ratio: holdoutRatio,
+    k_start: kStart,
+    k_end: kEnd,
+    k_step: kStep,
+    mode: $('plateau-mode').value,
+    anchor_policy: $('plateau-anchor-policy').value,
+    plateau_window: windowPoints,
+    island_drop_ratio: islandRatio,
+    front_run_offset_pct: frontRunOffset,
+    history_days: historyDays,
+  };
   try {
-    const data = await fetchPlateau({
-      code,
-      grid_amount: gridAmount,
-      max_positions: maxPositions,
-      lot_size: lotSize,
-      fee,
-      min_fee: minfee,
-      spread_pct: spread,
-      slippage_pct: slippage,
-      price_limit_pct: priceLimit,
-      min_loops: minLoops,
-      open_loss_penalty: openLossPenalty,
-      holdout_ratio: holdoutRatio,
-      k_start: kStart,
-      k_end: kEnd,
-      k_step: kStep,
-      mode: $('plateau-mode').value,
-      anchor_policy: $('plateau-anchor-policy').value,
-      plateau_window: windowPoints,
-      island_drop_ratio: islandRatio,
-      front_run_offset_pct: frontRunOffset,
-      history_days: historyDays,
-    });
+    const data = await fetchPlateau(payload);
     renderPlateau(data, $('plateau-wrap'));
-    $('plateau-status').textContent = `计算完成：${data.k_values.length} 个 k 值，剔除 ${data.summary.island_count} 个孤岛`;
+    $('plateau-status').textContent = `主策略完成：${data.k_values.length} 个 k 值`;
+    if (comparePolicies) {
+      await loadPolicyComparison(payload, data, $('plateau-wrap'));
+    }
   } catch (e) {
     $('plateau-status').textContent = e.message;
   } finally {
@@ -316,6 +410,57 @@ async function generatePlateau() {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function initParamTips() {
+  const tip = document.createElement('div');
+  tip.id = 'param-tip';
+  document.body.appendChild(tip);
+  let current = null;
+
+  const hide = () => {
+    tip.classList.remove('show', 'above');
+    current = null;
+  };
+
+  const show = (element) => {
+    const text = element.dataset.tip;
+    if (!text) return;
+    tip.textContent = text;
+    tip.classList.add('show');
+    const rect = element.getBoundingClientRect();
+    const width = Math.min(340, window.innerWidth - 24);
+    tip.style.maxWidth = `${width}px`;
+    const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+    tip.style.left = `${left}px`;
+    tip.style.top = `${rect.bottom + 8}px`;
+    const tipRect = tip.getBoundingClientRect();
+    if (rect.bottom + 8 + tipRect.height > window.innerHeight - 12) {
+      tip.classList.add('above');
+      tip.style.top = `${Math.max(8, rect.top - tipRect.height - 8)}px`;
+    } else {
+      tip.classList.remove('above');
+    }
+    current = element;
+  };
+
+  document.addEventListener('click', event => {
+    const target = event.target.closest?.('.param-label');
+    if (target) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (current === target) {
+        hide();
+      } else {
+        show(target);
+      }
+      return;
+    }
+    if (!event.target.closest?.('#param-tip')) hide();
+  });
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') hide(); });
+  window.addEventListener('scroll', hide, { passive: true });
+  window.addEventListener('resize', hide);
 }
 
 function initToc() {
@@ -342,6 +487,7 @@ $('heatmap-btn').addEventListener('click', generateHeatmap);
 $('plateau-btn').addEventListener('click', generatePlateau);
 
 restoreInputs();
+initParamTips();
 initToc();
 if (!$('code').value) $('code').value = '600000';
 window.addEventListener('load', () => analyze());

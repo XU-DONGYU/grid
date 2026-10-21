@@ -174,33 +174,37 @@
 | `front_run_offset_pct` | `0.20` | 向下微调百分点 |
 | `pullback_sell_pct` / `rebound_buy_pct` | `0.30 / 0.30` | 拐点条件单参数 |
 | `price_limit_pct` | `10` | 涨跌停阈值 %，0 关闭 |
+| `stop_loss_pct` | `5` | 破网止损 %，0 关闭 |
+| `restart_cooldown_days` | `0` | 止损后重启冷却交易日 |
 | `min_bars_per_day` | `1` | 交易日最少 5 分钟 bar 数 |
 | `holdout_ratio` | `0.30` | 留出验证比例，0 关闭 |
+| `compare_anchor_policies` | `false` | 是否自动对照四种锚定策略 |
 | `history_days` | `500` | 拉取历史交易日数 |
 
 响应 `data` 包含：
 
 - `context`：最新 ATR、价格、数据区间、摩擦、安全底线
 - `k_values`：扫描的 k 列表
-- `curve`：每个 k 的 `net_return_pct`、`capital_return_pct`、`selection_value`、`used_capital_return_pct`、`risk_adjusted_return_pct`、`annualized_net_return_pct`、`loops`、`max_positions_used`、`capital_utilization_pct`、`open_position_pnl_pct`、`open_position_count`、`slippage_paid_pct`、`cash_remaining`、`capital_constrained_buys`、`limit_locked_days`、`below_safe`、`is_island`、`in_plateau`、`is_optimal` 等
+- `curve`：每个 k 的 `net_return_pct`、`capital_return_pct`、`selection_value`、`used_capital_return_pct`、`risk_adjusted_return_pct`、`annualized_net_return_pct`、`loops`、`max_positions_used`、`capital_utilization_pct`、`open_position_pnl_pct`、`open_position_count`、`slippage_paid_pct`、`cash_remaining`、`capital_constrained_buys`、`limit_locked_days`、`stop_count`、`restart_count`、`stopped_days`、`below_safe`、`is_island`、`in_plateau`、`is_optimal` 等
 - `islands`：被剔除的孤岛点及左右跌幅
-- `plateau`：实测高原 `[k_left, k_right]`、`k_star`、均值、标准差、评分、k* 占网格资金收益和最大持仓
+- `plateau`：实测高原 `[k_left, k_right]`、`k_star`、均值、标准差、评分、k* 占网格资金收益、最大持仓、止损/重启次数
 - `prior_validation`：与 `0.65–0.80 × ATR%` 先验带的重合关系
 - `holdout`：前 70% 样本内选参、后 30% 留出验证的锁定 k* 和结果
+- `policy_comparison`：锚定策略并排对照；`compare_anchor_policies=false` 时只返回当前策略一行，单策略失败时 `status=error`
 - `live`：`d_raw_pct`、`d_exec_pct`、`k_exec`、整数关口修正、拐点触发参数
-- `summary`：k 数量、样本内/留出/总交易日、摩擦、`k_min_safe`、最大槽位、网格资金、锚定策略、整手、滑点、涨跌停阈值、缺失日、孤岛数、原始最优是否落在禁区、合规高原是否贴近安全底线或右边界、样本提示
+- `summary`：k 数量、样本内/留出/总交易日、摩擦、`k_min_safe`、最大槽位、网格资金、锚定策略、整手、滑点、涨跌停阈值、破网止损、缺失日、孤岛数、原始最优是否落在禁区、合规高原是否贴近安全底线或右边界、样本提示
 - `config` / `data_snapshot`：本次参数和数据快照
 
 该接口为同步调用，计算量远小于 5 分钟滚动 OOS；数据有效但找不到连续高原时返回 200 与 `plateau=null`，由前端展示原因；完全没有可用数据时返回 400/404。找不到正收益高原或合规高原顶到 k 扫描右边界时，`live=null` 并返回原因。
 
-撮合模型支持 `daily_roll`、`fixed_band`、`fixed`、`periodic` 四种锚定策略；最多持有 `max_positions` 个槽位，支持 A 股整手、现金上限、滑点、涨跌停锁定和缺失日处理。`net_return_pct` 是单格预算累计收益，`capital_return_pct` 是占网格总资金的收益。默认前 70% 交易日选参，后 30% 作为留出段只评估锁定的 `k*`。
+撮合模型支持 `daily_roll`、`fixed_band`、`fixed`、`periodic` 四种锚定策略；最多持有 `max_positions` 个槽位，支持 A 股整手、现金上限、滑点、涨跌停锁定、缺失日处理、破网止损和区间重启。`net_return_pct` 是单格预算累计收益，`capital_return_pct` 是占网格总资金的收益。默认前 70% 交易日选参，后 30% 作为留出段只评估锁定的 `k*`；`compare_anchor_policies=true` 时会额外返回四种策略的对照表。前端为规避反向代理超时，先请求主策略出图，再逐个策略补齐对照表。
 
 ## GET /api/health
 
 返回：
 
 ```json
-{"ok": true, "version": "2.5.0", "env": "development"}
+{"ok": true, "version": "2.6.0", "env": "development"}
 ```
 
 ## GET /api/version
@@ -208,7 +212,7 @@
 返回：
 
 ```json
-{"version": "2.5.0", "schema_version": 2}
+{"version": "2.6.0", "schema_version": 2}
 ```
 
 ## 错误响应

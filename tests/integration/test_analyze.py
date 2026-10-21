@@ -58,7 +58,7 @@ def get_analysis(client: TestClient, code: str) -> dict:
     assert body["schema_version"] == 2
     contract = AnalyzeResponse.model_validate(body)
     assert contract.schema_version == 2
-    assert contract.data.version == "2.5.0"
+    assert contract.data.version == "2.6.0"
     return contract.data.model_dump()
 
 
@@ -66,7 +66,7 @@ def test_analyze_002541_snapshot(client_for: Any, fixture_002541: dict) -> None:
     client = client_for(fixture_002541)
     data = get_analysis(client, "002541")
 
-    assert data["version"] == "2.5.0"
+    assert data["version"] == "2.6.0"
     assert data["quote"]["name"] == "鸿路钢构"
     assert data["quote"]["total_mv"] == pytest.approx(153.87)
     assert data["volatility"]["vol_of_vol_pct"] == pytest.approx(9.325212, abs=1e-5)
@@ -110,11 +110,11 @@ def test_health_and_version(client: TestClient) -> None:
     health = client.get("/api/health")
     assert health.status_code == 200
     assert health.json()["ok"] is True
-    assert health.json()["version"] == "2.5.0"
+    assert health.json()["version"] == "2.6.0"
 
     version = client.get("/api/version")
     assert version.status_code == 200
-    assert version.json() == {"version": "2.5.0", "schema_version": 2}
+    assert version.json() == {"version": "2.6.0", "schema_version": 2}
 
 
 def test_root_serves_html(client: TestClient) -> None:
