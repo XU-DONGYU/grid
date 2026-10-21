@@ -400,7 +400,9 @@ class PlateauRequest(ApiModel):
     k_end: float = Field(2.50, gt=0, le=10)
     k_step: float = Field(0.05, gt=0, le=1)
     mode: Literal["dynamic", "static_mean"] = "dynamic"
-    anchor_policy: Literal["daily_roll", "fixed_band", "fixed", "periodic"] = "daily_roll"
+    anchor_policy: Literal["daily_roll", "fixed_band", "fixed", "periodic"] = "fixed"
+    band_lower: float | None = Field(None, gt=0)
+    band_upper: float | None = Field(None, gt=0)
     band_lookback_days: int = Field(60, ge=5, le=500)
     band_buffer_pct: float = Field(2.0, ge=0, le=20)
     reanchor_period_days: int = Field(20, ge=1, le=250)
@@ -439,6 +441,14 @@ class PlateauRequest(ApiModel):
     def validate_k_range(self) -> "PlateauRequest":
         if self.k_end <= self.k_start:
             raise ValueError("k_end 必须大于 k_start")
+        if (self.band_lower is None) != (self.band_upper is None):
+            raise ValueError("band_lower 和 band_upper 必须同时提供或同时留空")
+        if (
+            self.band_lower is not None
+            and self.band_upper is not None
+            and self.band_upper <= self.band_lower
+        ):
+            raise ValueError("band_upper 必须大于 band_lower")
         return self
 
 
@@ -475,6 +485,8 @@ class PlateauPoint(ApiModel):
     restart_count: int
     stopped_days: int
     last_stop_day: str | None = None
+    upper_breakout_days: int
+    lower_breakout_days: int
     below_safe: bool
     is_island: bool
     in_plateau: bool
@@ -579,6 +591,8 @@ class PlateauHoldout(ApiModel):
     open_position_pnl_pct: float | None = None
     max_positions_used: int | None = None
     max_open_loss_pct: float | None = None
+    upper_breakout_days: int | None = None
+    lower_breakout_days: int | None = None
     positive: bool | None = None
 
 
@@ -595,6 +609,9 @@ class PlateauSummary(ApiModel):
     max_positions: int
     grid_capital: float
     anchor_policy: str
+    band_lower: float
+    band_upper: float
+    band_source: str
     min_loops: int
     lot_size: int
     slippage_pct: float

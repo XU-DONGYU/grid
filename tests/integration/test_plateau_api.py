@@ -127,7 +127,9 @@ def test_plateau_contract(plateau_client: TestClient) -> None:
     assert contract.data.summary.total_days == 50
     assert contract.data.summary.max_positions == 8
     assert contract.data.context.max_positions == 8
-    assert contract.data.context.anchor_policy == "daily_roll"
+    assert contract.data.context.anchor_policy == "fixed"
+    assert contract.data.context.band_lower > 0
+    assert contract.data.context.band_upper > contract.data.context.band_lower
     assert contract.data.curve[0].max_positions == 8
     assert contract.data.plateau.k_star_max_positions_used >= 1
     assert contract.data.holdout.enabled is True

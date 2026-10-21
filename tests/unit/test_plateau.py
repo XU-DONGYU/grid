@@ -9,6 +9,7 @@ from grid_analyzer.backtest.plateau import (
     AtrPoint,
     InsufficientPlateauDataError,
     PlateauConfig,
+    _band_levels,
     _build_day_steps,
     _DayStep,
     build_daily_anchors,
@@ -19,6 +20,7 @@ from grid_analyzer.backtest.plateau import (
     front_running_adjust,
     plateau_k_values,
     prior_overlap,
+    resolve_band,
     run_plateau_scan,
     safe_k_floor,
     select_plateau,
@@ -199,6 +201,78 @@ def test_rolling_ladder_rearms_in_a_trend_and_caps_positions() -> None:
     assert result["max_positions_used"] == 2
     assert result["max_positions"] == 2
     assert result["capital_return_pct"] == pytest.approx(result["net_return_pct"] / 2)
+
+
+def test_default_is_fixed_band_without_stop() -> None:
+    config = PlateauConfig()
+    assert config.anchor_policy == "fixed"
+    assert config.stop_loss_pct == 0.0
+
+
+def test_band_levels_and_breakout_wait() -> None:
+    levels = _band_levels(90.0, 110.0, 10.0)
+    assert [round(level, 4) for _, level in levels] == [90.0, 99.0, 108.9]
+
+    day_steps = {
+        "2025-01-02": _DayStep(
+            "2025-01-02",
+            step_pct=10.0,
+            step_abs=10.0,
+            atr_pct=2.0,
+            anchor=100.0,
+            prev_close=100.0,
+            band_lower=90.0,
+            band_upper=110.0,
+        ),
+        "2025-01-03": _DayStep(
+            "2025-01-03",
+            step_pct=10.0,
+            step_abs=10.0,
+            atr_pct=2.0,
+            anchor=100.0,
+            prev_close=100.0,
+            band_lower=90.0,
+            band_upper=110.0,
+        ),
+        "2025-01-06": _DayStep(
+            "2025-01-06",
+            step_pct=10.0,
+            step_abs=10.0,
+            atr_pct=2.0,
+            anchor=100.0,
+            prev_close=109.0,
+            band_lower=90.0,
+            band_upper=110.0,
+        ),
+    }
+    bars_by_day = {
+        "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 100, 95)],
+        "2025-01-03": [bar("2025-01-03", "09:35", 108, 109, 109, 107)],
+        "2025-01-06": [bar("2025-01-06", "09:35", 115, 115, 116, 114)],
+    }
+    result = simulate_k(
+        bars_by_day,
+        day_steps,
+        make_config(anchor_policy="fixed", max_positions=8),
+    )
+    assert result["loops"] == 1
+    assert result["open_position_count"] == 0
+    assert result["upper_breakout_days"] == 1
+    assert result["lower_breakout_days"] == 0
+
+
+def test_resolve_band_manual_and_auto() -> None:
+    manual = resolve_band([], "2025-01-02", PlateauConfig(band_lower=8.0, band_upper=12.0))
+    assert manual == (8.0, 12.0, "manual")
+
+    prior = [
+        AtrPoint("2025-01-02", 10.0, 0.2, 2.0, high=10.5, low=9.5),
+        AtrPoint("2025-01-03", 10.2, 0.2, 2.0, high=10.8, low=9.8),
+    ]
+    lower, upper, source = resolve_band(prior, "2025-01-06", PlateauConfig())
+    assert source == "auto"
+    assert lower == pytest.approx(9.5 * 1.02)
+    assert upper == pytest.approx(10.8 * 0.98)
 
 
 def test_anchor_policies_use_only_prior_data() -> None:

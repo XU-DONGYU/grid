@@ -8,7 +8,7 @@ from grid_analyzer.backtest.plateau import PlateauConfig, run_plateau_scan
 from grid_analyzer.data.base import MarketDataProvider
 from grid_analyzer.data.intraday import IntradayRepository
 
-ANCHOR_POLICIES = ("daily_roll", "fixed_band", "fixed", "periodic")
+ANCHOR_POLICIES = ("fixed", "fixed_band", "periodic", "daily_roll")
 
 
 def _comparison_row(policy: str, result: dict) -> dict:
@@ -58,11 +58,15 @@ class PlateauService:
     def run(self, request: PlateauRequest) -> dict:
         end_date = date.today()
         start_date = end_date - timedelta(days=int(request.history_days * 1.6))
+        daily_start_date = start_date - timedelta(
+            days=int(request.band_lookback_days * 1.6)
+        )
         start_text = start_date.isoformat()
+        daily_start_text = daily_start_date.isoformat()
         end_text = end_date.isoformat()
 
         bars_5m = self.repository.get_bars(request.code, "5", start_text, end_text)
-        daily_bars = self.repository.get_bars(request.code, "d", start_text, end_text)
+        daily_bars = self.repository.get_bars(request.code, "d", daily_start_text, end_text)
 
         config = PlateauConfig(
             grid_amount=request.grid_amount,
@@ -78,6 +82,8 @@ class PlateauService:
             k_step=request.k_step,
             mode=request.mode,
             anchor_policy=request.anchor_policy,
+            band_lower=request.band_lower,
+            band_upper=request.band_upper,
             band_lookback_days=request.band_lookback_days,
             band_buffer_pct=request.band_buffer_pct,
             reanchor_period_days=request.reanchor_period_days,
@@ -169,6 +175,9 @@ class PlateauService:
             "k_min_safe": summary["k_min_safe"],
             "mode": request.mode,
             "anchor_policy": request.anchor_policy,
+            "band_lower": summary["band_lower"],
+            "band_upper": summary["band_upper"],
+            "band_source": summary["band_source"],
             "lot_size": request.lot_size,
             "price_limit_pct": request.price_limit_pct,
             "stop_loss_pct": request.stop_loss_pct,
@@ -180,9 +189,13 @@ class PlateauService:
             "source": "BaoStock",
             "code": request.code,
             "start": start_text,
+            "daily_start": daily_start_text,
             "end": end_text,
             "full_start": data["full_start"],
             "full_end": data["full_end"],
+            "band_lower": summary["band_lower"],
+            "band_upper": summary["band_upper"],
+            "band_source": summary["band_source"],
             "bar_count": len(bars_5m),
             "daily_count": len(daily_bars),
             "latest_atr14": data["latest_atr"],

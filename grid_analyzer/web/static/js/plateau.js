@@ -174,6 +174,7 @@ function contextCard(data) {
   return `<div class="plateau-context">
     <div><span>股票</span><b>${esc(context.name || '')} ${esc(context.code || '')}</b></div>
     <div><span>步长 / 锚定</span><b>${mode} · ${esc(anchor)}</b></div>
+    <div><span>固定区间</span><b>${fmt(context.band_lower, 3)} – ${fmt(context.band_upper, 3)} · ${esc({auto: '自动', manual: '手动', fallback: '兜底'}[context.band_source] || context.band_source)}</b></div>
     <div><span>最新 ATR(14)</span><b>${pct(context.latest_atr_pct)}</b></div>
     <div><span>区间日均 ATR%</span><b>${pct(context.mean_atr_pct)}</b></div>
     <div><span>双边摩擦 C%</span><b>${pct(context.friction_pct)}</b></div>
@@ -224,6 +225,7 @@ function holdoutCard(data) {
       <div><span>留出净收益</span><b>${pct(holdout.net_return_pct)}</b></div>
       <div><span>占网格资金</span><b>${pct(holdout.capital_return_pct)}</b></div>
       <div><span>闭环 / 最大持仓</span><b>${fmt(holdout.loops, 0)} / ${fmt(holdout.max_positions_used, 0)}</b></div>
+      <div><span>区间外天数（上/下）</span><b>${fmt(holdout.upper_breakout_days, 0)} / ${fmt(holdout.lower_breakout_days, 0)}</b></div>
     </div>
     <div class="note">留出段只评估样本内选出的 k*，不参与高原选择。</div>
   </div>`;
@@ -384,11 +386,11 @@ function policyTable(data) {
   return `<div class="plateau-prior-card" style="margin-top:12px">
     <div class="blind-title">四种锚定策略自动对照</div>
     <div id="plateau-policy-table">${policyRowsMarkup(rows, data.context?.anchor_policy)}</div>
-    <div class="note">高原在不同锚定策略下越接近，参数越稳健；差异很大时，不应只采用单一策略的 k*。</div>
+    <div class="note">fixed 使用完整固定区间阶梯；其余策略为锚点梯子对照。高原在不同策略下越接近，参数越稳健；差异很大时，不应只采用单一策略的 k*。</div>
   </div>`;
 }
 
-const POLICY_ORDER = ['daily_roll', 'fixed_band', 'fixed', 'periodic'];
+const POLICY_ORDER = ['fixed', 'fixed_band', 'periodic', 'daily_roll'];
 
 export function updatePolicyComparison(rows, currentPolicy, container) {
   const target = container.querySelector('#plateau-policy-table');

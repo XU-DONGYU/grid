@@ -157,8 +157,9 @@
 | `friction_pct` | 空 | 可直接指定双边摩擦 C% |
 | `k_start` / `k_end` / `k_step` | `0.20 / 2.50 / 0.05` | k 扫描范围，默认 47 个值 |
 | `mode` | `dynamic` | `dynamic` 或 `static_mean` |
-| `anchor_policy` | `daily_roll` | `daily_roll` / `fixed_band` / `fixed` / `periodic` |
-| `band_lookback_days` | `60` | `fixed_band` 滚动区间天数 |
+| `anchor_policy` | `fixed` | `fixed` / `fixed_band` / `periodic` / `daily_roll` |
+| `band_lower` / `band_upper` | 空 | 手动固定区间；同时提供或同时留空 |
+| `band_lookback_days` | `60` | 自动固定区间回看天数 |
 | `band_buffer_pct` | `2.0` | `fixed_band` 突破缓冲 % |
 | `reanchor_period_days` | `20` | `periodic` 重锚周期 |
 | `atr_period` | `14` | 日线 ATR 周期 |
@@ -174,7 +175,7 @@
 | `front_run_offset_pct` | `0.20` | 向下微调百分点 |
 | `pullback_sell_pct` / `rebound_buy_pct` | `0.30 / 0.30` | 拐点条件单参数 |
 | `price_limit_pct` | `10` | 涨跌停阈值 %，0 关闭 |
-| `stop_loss_pct` | `5` | 破网止损 %，0 关闭 |
+| `stop_loss_pct` | `0` | 破网止损 %；0 表示跌破下限只等待回区间 |
 | `restart_cooldown_days` | `0` | 止损后重启冷却交易日 |
 | `min_bars_per_day` | `1` | 交易日最少 5 分钟 bar 数 |
 | `holdout_ratio` | `0.30` | 留出验证比例，0 关闭 |
@@ -197,14 +198,14 @@
 
 该接口为同步调用，计算量远小于 5 分钟滚动 OOS；数据有效但找不到连续高原时返回 200 与 `plateau=null`，由前端展示原因；完全没有可用数据时返回 400/404。找不到正收益高原或合规高原顶到 k 扫描右边界时，`live=null` 并返回原因。
 
-撮合模型支持 `daily_roll`、`fixed_band`、`fixed`、`periodic` 四种锚定策略；最多持有 `max_positions` 个槽位，支持 A 股整手、现金上限、滑点、涨跌停锁定、缺失日处理、破网止损和区间重启。`net_return_pct` 是单格预算累计收益，`capital_return_pct` 是占网格总资金的收益。默认前 70% 交易日选参，后 30% 作为留出段只评估锁定的 `k*`；`compare_anchor_policies=true` 时会额外返回四种策略的对照表。前端为规避反向代理超时，先请求主策略出图，再逐个策略补齐对照表。
+默认模型是 `fixed` 固定区间网格：启动时用自动或手动区间确定上下限，密度以 k × ATR% 冻结，之后档位不动；涨破上限和跌破下限默认都只等待回到区间。支持 `daily_roll`、`fixed_band`、`fixed`、`periodic` 对照；最多持有 `max_positions` 个槽位，支持 A 股整手、现金上限、滑点、涨跌停锁定、缺失日处理和可选破网止损。`net_return_pct` 是单格预算累计收益，`capital_return_pct` 是占网格总资金的收益。默认前 70% 交易日选参，后 30% 作为留出段只评估锁定的 `k*`；`compare_anchor_policies=true` 时会额外返回四种策略的对照表。前端为规避反向代理超时，先请求主策略出图，再逐个策略补齐对照表。
 
 ## GET /api/health
 
 返回：
 
 ```json
-{"ok": true, "version": "2.6.0", "env": "development"}
+{"ok": true, "version": "2.7.0", "env": "development"}
 ```
 
 ## GET /api/version
@@ -212,7 +213,7 @@
 返回：
 
 ```json
-{"version": "2.6.0", "schema_version": 2}
+{"version": "2.7.0", "schema_version": 2}
 ```
 
 ## 错误响应

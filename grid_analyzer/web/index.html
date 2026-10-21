@@ -163,21 +163,23 @@
       <div class="card-title"><span class="bar"></span>ATR 归一化参数高原（实验）</div>
       <div class="heatmap-controls">
         <div class="field">
-          <label><span class="param-label" data-tip="dynamic：每个交易日用 k × 前一日 ATR 计算绝对步长；static_mean：用 k × 历史扩展日均 ATR% 计算固定百分比步长。">步长模式</span></label>
+          <label><span class="param-label" data-tip="固定区间模式：启动时用 k × 起始 ATR% 或 k × 历史日均 ATR% 计算密度，之后密度不再变化。其他锚定策略下用于各自的密度计算。">步长模式</span></label>
           <select id="plateau-mode">
             <option value="dynamic">动态自适应（每日 k × ATR）</option>
             <option value="static_mean">静态均值（k × 历史日均 ATR%）</option>
           </select>
         </div>
         <div class="field">
-          <label><span class="param-label" data-tip="daily_roll：每天用前收盘价重锚，研究用；fixed_band：用前 N 日区间，突破并超过缓冲才重锚；fixed：整个回测固定第一个锚点；periodic：每 N 个交易日重锚。">锚定策略</span></label>
+          <label><span class="param-label" data-tip="fixed：启动时定区间和密度，之后完全不动；fixed_band：突破区间后才重锚；periodic：每 N 个交易日重锚；daily_roll：每天重锚，仅作为研究对照。">锚定策略</span></label>
           <select id="plateau-anchor-policy">
-            <option value="daily_roll">每日重锚（研究）</option>
+            <option value="fixed">固定区间（标准网格）</option>
             <option value="fixed_band">区间边界重锚</option>
-            <option value="fixed">固定锚点</option>
             <option value="periodic">周期重锚</option>
+            <option value="daily_roll">每日重锚（研究对照）</option>
           </select>
         </div>
+        <div class="field"><label><span class="param-label" data-tip="可选手动区间下限。下限和上限必须同时填写；留空则自动使用启动前 N 日高低点。">区间下限（留空=自动）</span></label><input id="plateau-band-lower" type="number" value="" min="0.01" step="0.01" placeholder="自动"></div>
+        <div class="field"><label><span class="param-label" data-tip="可选手动区间上限。下限和上限必须同时填写；留空则自动使用启动前 N 日高低点。">区间上限（留空=自动）</span></label><input id="plateau-band-upper" type="number" value="" min="0.01" step="0.01" placeholder="自动"></div>
         <div class="field"><label><span class="param-label" data-tip="k 扫描下界。k 是无量纲系数，实际步长 = k × ATR%。">k 起点</span></label><input id="plateau-k-start" type="number" value="0.20" min="0.05" max="5" step="0.05"></div>
         <div class="field"><label><span class="param-label" data-tip="k 扫描上界。若高原顶到右边界，系统会提示扩大终点。">k 终点</span></label><input id="plateau-k-end" type="number" value="2.50" min="0.1" max="5" step="0.05"></div>
         <div class="field"><label><span class="param-label" data-tip="k 的扫描步长。默认 0.05，步长越小曲线越细但计算越慢。">k 步长</span></label><input id="plateau-k-step" type="number" value="0.05" min="0.01" max="0.5" step="0.01"></div>
@@ -194,7 +196,7 @@
           <div class="field"><label><span class="param-label" data-tip="单边滑点/冲击代理。买入加价、卖出减价，各扣一次；不建模完整订单簿深度。">单边滑点/冲击 %</span></label><input id="plateau-slippage" type="number" value="0.02" min="0" max="5" step="0.01"></div>
           <div class="field"><label><span class="param-label" data-tip="A 股整手股数。100 表示按一手取整；0 表示使用 M / 价格的归一化数量，适合纯研究比较。">整手股数（0=归一化）</span></label><input id="plateau-lot-size" type="number" value="100" min="0" max="10000" step="100"></div>
           <div class="field"><label><span class="param-label" data-tip="涨跌停封死日识别阈值。0 表示关闭；主板通常 10，创业板/科创板 20，北交所 30。">涨跌停阈值 %（0=关闭）</span></label><input id="plateau-price-limit" type="number" value="10" min="0" max="50" step="1"></div>
-          <div class="field"><label><span class="param-label" data-tip="价格跌破最低网格档位该比例后清仓，并停止买入；0 表示关闭。清仓后按滚动锚点重启新区间。">破网止损 %（0=关闭）</span></label><input id="plateau-stop-loss" type="number" value="5" min="0" max="50" step="1"></div>
+          <div class="field"><label><span class="param-label" data-tip="默认 0：跌破下限只等待价格回到区间，不强制止损。设为大于 0 时，跌破区间下限该比例后清仓并按冷却天数重启。">破网止损 %（0=等待回区间）</span></label><input id="plateau-stop-loss" type="number" value="0" min="0" max="50" step="1"></div>
           <div class="field"><label><span class="param-label" data-tip="止损清仓后等待多少个交易日再重启网格。0 表示下一交易日重启。">止损重启冷却天数</span></label><input id="plateau-restart-cooldown" type="number" value="0" min="0" max="60" step="1"></div>
           <div class="field"><label><span class="param-label" data-tip="参与高原选择所需的最小闭环次数，用于过滤几乎没有交易的死区。">高原最小闭环数</span></label><input id="plateau-min-loops" type="number" value="10" min="0" max="10000" step="1"></div>
           <div class="field"><label><span class="param-label" data-tip="选参时对期末未平仓浮亏的扣减系数。0 表示不惩罚，1 表示完全扣减浮亏。">期末浮亏惩罚</span></label><input id="plateau-open-loss-penalty" type="number" value="0.5" min="0" max="5" step="0.1"></div>
@@ -206,7 +208,7 @@
         </div>
       </details>
       <div id="plateau-wrap"></div>
-      <div class="note">实验模块：横轴为无量纲 k（网格步长 ÷ 日线 ATR(14)），红色为 k 低于 10 倍双边成本安全底线的禁区，浅蓝色为 0.65–0.80 × ATR% 理论先验带，绿色为实测高原，金色星标为高原中心偏左的 k*。计算使用 5 分钟 K 线做 0/1 阶跃触线撮合，按格线成交，支持 A 股整手、现金上限、滑点、涨跌停锁定、停牌/缺失日和破网止损/区间重启。默认前 70% 选参、后 30% 留出验证；ATR 和锚点只使用前一交易日及更早数据。勾选自动对照后会同时计算四种锚定策略，便于判断高原是否跨策略稳定。结果不构成投资建议。</div>
+      <div class="note">标准模式为固定区间网格：启动时用前 N 日高低点自动确定上下限，也可手动覆盖；密度在启动时确定，之后档位不动。涨破上限或跌破下限时默认只等待价格回到区间，不强制移仓；如需止损可把破网止损设为大于 0。计算使用 5 分钟 K 线做 0/1 阶跃触线撮合，按格线成交，支持 A 股整手、现金上限、滑点、涨跌停和停牌/缺失日。默认前 70% 选参、后 30% 留出验证；`daily_roll` 仅作为研究对照。结果不构成投资建议。</div>
     </div>
 
     <div class="panel" id="p-risk">

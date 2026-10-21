@@ -36,7 +36,9 @@ class PlateauConfig:
     k_end: float = 2.50
     k_step: float = 0.05
     mode: AnchorMode = "dynamic"
-    anchor_policy: str = "daily_roll"
+    anchor_policy: str = "fixed"
+    band_lower: float | None = None
+    band_upper: float | None = None
     band_lookback_days: int = 60
     band_buffer_pct: float = 2.0
     reanchor_period_days: int = 20
@@ -56,7 +58,7 @@ class PlateauConfig:
     price_limit_pct: float = 10.0
     min_bars_per_day: int = 1
     holdout_ratio: float = 0.30
-    stop_loss_pct: float = 5.0
+    stop_loss_pct: float = 0.0
     restart_cooldown_days: int = 0
 
 
@@ -78,6 +80,8 @@ class _DayStep:
     atr_pct: float
     anchor: float
     prev_close: float = 0.0
+    band_lower: float | None = None
+    band_upper: float | None = None
 
 
 def plateau_k_values(start: float, end: float, step: float) -> list[float]:
@@ -233,6 +237,8 @@ def _build_day_steps(
     config: PlateauConfig,
     k_value: float,
     anchors: dict[str, float] | None = None,
+    band: tuple[float, float] | None = None,
+    start_step_pct: float | None = None,
 ) -> dict[str, _DayStep]:
     atr_days = [point.trading_day for point in atr_series]
     prefix_pct = [0.0]
@@ -248,6 +254,20 @@ def _build_day_steps(
             # The same day's ATR is only known after the close; use the prior day.
             continue
         previous = atr_series[index - 1]
+        if config.anchor_policy == "fixed" and band is not None and start_step_pct:
+            step_pct = start_step_pct
+            anchor = (band[0] + band[1]) / 2.0
+            steps[day] = _DayStep(
+                trading_day=day,
+                step_pct=step_pct,
+                step_abs=anchor * step_pct / 100.0,
+                atr_pct=previous.atr_pct,
+                anchor=anchor,
+                prev_close=previous.close,
+                band_lower=band[0],
+                band_upper=band[1],
+            )
+            continue
         anchor = anchors.get(day, previous.close)
         if anchor <= 0:
             continue
@@ -278,6 +298,70 @@ def _day_levels(anchor: float, step_abs: float, max_positions: int) -> list[tupl
         if level > 0:
             levels.append((index, level))
     return levels
+
+
+def _band_levels(lower: float, upper: float, step_pct: float) -> list[tuple[int, float]]:
+    """Build a geometric ladder across a fixed price band."""
+    if lower <= 0 or upper <= lower or step_pct <= 0:
+        return []
+    growth = 1.0 + step_pct / 100.0
+    levels: list[tuple[int, float]] = []
+    level = lower
+    while level <= upper * (1.0 + 1e-9) and len(levels) < 1000:
+        levels.append((len(levels), level))
+        level *= growth
+    return levels
+
+
+def resolve_band(
+    atr_series: list[AtrPoint],
+    first_day: str,
+    config: PlateauConfig,
+) -> tuple[float, float, str]:
+    """Resolve the fixed band from manual inputs or prior daily highs/lows."""
+    if config.band_lower is not None and config.band_upper is not None:
+        if config.band_lower <= 0 or config.band_upper <= config.band_lower:
+            raise ValueError("手动区间必须满足 0 < 下限 < 上限")
+        return float(config.band_lower), float(config.band_upper), "manual"
+    lookback = max(5, int(config.band_lookback_days))
+    prior = [point for point in atr_series if point.trading_day < first_day][-lookback:]
+    if prior:
+        raw_lower = min(point.low or point.close for point in prior)
+        raw_upper = max(point.high or point.close for point in prior)
+        buffer = max(0.0, float(config.band_buffer_pct)) / 100.0
+        lower = raw_lower * (1.0 + buffer)
+        upper = raw_upper * (1.0 - buffer)
+        if lower < upper:
+            return lower, upper, "auto"
+        return raw_lower, raw_upper, "auto"
+    first = next(
+        (point for point in atr_series if point.trading_day >= first_day),
+        atr_series[0] if atr_series else None,
+    )
+    if first is None or first.close <= 0:
+        raise InsufficientPlateauDataError("无法确定固定区间")
+    return first.close * 0.9, first.close * 1.1, "fallback"
+
+
+def fixed_step_pct(
+    atr_series: list[AtrPoint],
+    first_day: str,
+    config: PlateauConfig,
+    k_value: float,
+) -> float:
+    """Density computed once at the start of a fixed-band grid."""
+    lookback = max(5, int(config.band_lookback_days))
+    prior = [point for point in atr_series if point.trading_day < first_day][-lookback:]
+    if not prior:
+        prior = [point for point in atr_series if point.trading_day >= first_day][:1]
+    if not prior:
+        return 0.0
+    base = (
+        prior[-1].atr_pct
+        if config.mode == "dynamic"
+        else statistics.mean(point.atr_pct for point in prior)
+    )
+    return k_value * base
 
 
 def _slot_shares(price: float, config: PlateauConfig) -> float:
@@ -350,6 +434,8 @@ def simulate_k(
     restart_count = 0
     stopped_days = 0
     last_stop_day: str | None = None
+    upper_breakout_days = 0
+    lower_breakout_days = 0
     # Half-spread on each side plus explicit slippage/impact proxy.
     slip = (
         max(0.0, float(config.slippage_pct))
@@ -384,10 +470,17 @@ def simulate_k(
         last_trade_day = day
         open_lots.remove(lot)
 
-    def open_lot(level: float, level_index: int, step_abs: float) -> bool:
+    def open_lot(
+        level: float,
+        level_index: int,
+        step_abs: float,
+        target: float | None = None,
+    ) -> bool:
         nonlocal first_trade_day, max_positions_used, cash
         nonlocal capital_constrained_buys, peak_invested
         buy_price = level * (1.0 + slip)
+        if any(abs(float(lot["price"]) - buy_price) < 1e-9 for lot in open_lots):
+            return False
         shares = _slot_shares(buy_price, config)
         if shares <= 0:
             capital_constrained_buys += 1
@@ -403,7 +496,7 @@ def simulate_k(
             {
                 "price": buy_price,
                 "buy_day": day,
-                "target": buy_price + step_abs,
+                "target": target if target is not None else buy_price + step_abs,
                 "level_index": level_index,
                 "shares": shares,
                 "amount": amount,
@@ -466,11 +559,35 @@ def simulate_k(
             anchor = prev_close
         else:
             anchor = step.anchor if step is not None else open_price
-        levels = _day_levels(anchor, step_abs, max_positions) if step_abs > 0 else []
+        band_mode = (
+            step is not None
+            and step.band_lower is not None
+            and step.band_upper is not None
+            and step.step_pct > 0
+            and config.anchor_policy == "fixed"
+            and not post_stop_rolling
+        )
+        if band_mode:
+            assert step is not None and step.band_lower is not None and step.band_upper is not None
+            levels = _band_levels(float(step.band_lower), float(step.band_upper), step.step_pct)
+        else:
+            levels = _day_levels(anchor, step_abs, max_positions) if step_abs > 0 else []
+        level_values = [level for _, level in levels]
+        if band_mode:
+            assert step is not None and step.band_lower is not None and step.band_upper is not None
+            day_close = float(bars[-1]["close"])
+            if day_close > float(step.band_upper):
+                upper_breakout_days += 1
+            elif day_close < float(step.band_lower):
+                lower_breakout_days += 1
         used_levels: set[int] = set()
         stop_price = None
         if config.stop_loss_pct > 0 and levels:
-            lower_bound = min(level for _, level in levels)
+            lower_bound = (
+                float(step.band_lower)
+                if band_mode and step is not None and step.band_lower is not None
+                else min(level for _, level in levels)
+            )
             stop_price = lower_bound * (1.0 - max(0.0, float(config.stop_loss_pct)) / 100.0)
 
         limit_locked = False
@@ -500,7 +617,25 @@ def simulate_k(
         for lot in list(open_lots):
             if lot["buy_day"] < day and open_price >= float(lot["target"]):
                 close_lot(lot, float(lot["target"]))
-        if step_abs > 0:
+        if band_mode:
+            start = bisect.bisect_left(level_values, open_price)
+            end = (
+                bisect.bisect_right(level_values, prev_close)
+                if prev_close > 0
+                else len(levels)
+            )
+            for index in range(end - 1, start - 1, -1):
+                if len(open_lots) >= max_positions:
+                    break
+                level_index, level = levels[index]
+                target = (
+                    levels[index + 1][1]
+                    if index + 1 < len(levels)
+                    else level * (1.0 + (step.step_pct if step else 0.0) / 100.0)
+                )
+                if open_lot(level, level_index, step_abs, target):
+                    used_levels.add(level_index)
+        elif step_abs > 0:
             for level_index, level in levels:
                 if len(open_lots) >= max_positions:
                     break
@@ -525,7 +660,23 @@ def simulate_k(
                         trigger_stop(stop_price)
                         stopped_today = True
                         break
-                    if step_abs > 0:
+                    if band_mode:
+                        start = bisect.bisect_left(level_values, current)
+                        end = bisect.bisect_left(level_values, previous)
+                        for index in range(end - 1, start - 1, -1):
+                            if len(open_lots) >= max_positions:
+                                break
+                            level_index, level = levels[index]
+                            if level_index in used_levels:
+                                continue
+                            target = (
+                                levels[index + 1][1]
+                                if index + 1 < len(levels)
+                                else level * (1.0 + (step.step_pct if step else 0.0) / 100.0)
+                            )
+                            if open_lot(level, level_index, step_abs, target):
+                                used_levels.add(level_index)
+                    elif step_abs > 0:
                         for level_index, level in levels:
                             if len(open_lots) >= max_positions:
                                 break
@@ -599,6 +750,8 @@ def simulate_k(
         "restart_count": restart_count,
         "stopped_days": stopped_days,
         "last_stop_day": last_stop_day,
+        "upper_breakout_days": upper_breakout_days,
+        "lower_breakout_days": lower_breakout_days,
         "first_trade_day": first_trade_day,
         "last_trade_day": last_trade_day,
         "open_positions": open_positions,
@@ -901,10 +1054,25 @@ def run_plateau_scan(
     friction_pct = effective_friction_pct(config)
     k_min_safe = safe_k_floor(friction_pct, mean_atr_pct)
     in_bars_by_day = {day: bars_by_day[day] for day in in_days}
+    first_day = in_days[0] if in_days else days[0]
+    band_lower, band_upper, band_source = resolve_band(atr_series, first_day, config)
 
     points: list[dict[str, Any]] = []
     for k_value in k_values:
-        day_steps = _build_day_steps(atr_series, days, config, k_value, anchors)
+        start_pct = (
+            fixed_step_pct(atr_series, first_day, config, k_value)
+            if config.anchor_policy == "fixed"
+            else None
+        )
+        day_steps = _build_day_steps(
+            atr_series,
+            days,
+            config,
+            k_value,
+            anchors,
+            band=(band_lower, band_upper),
+            start_step_pct=start_pct,
+        )
         simulation = simulate_k(in_bars_by_day, day_steps, config)
         below_safe = k_value < k_min_safe
         points.append(
@@ -943,6 +1111,8 @@ def run_plateau_scan(
                 "restart_count": simulation["restart_count"],
                 "stopped_days": simulation["stopped_days"],
                 "last_stop_day": simulation["last_stop_day"],
+                "upper_breakout_days": simulation["upper_breakout_days"],
+                "lower_breakout_days": simulation["lower_breakout_days"],
                 "below_safe": below_safe,
                 "is_island": False,
                 "in_plateau": False,
@@ -970,6 +1140,8 @@ def run_plateau_scan(
         "open_position_pnl_pct": None,
         "max_positions_used": None,
         "max_open_loss_pct": None,
+        "upper_breakout_days": None,
+        "lower_breakout_days": None,
         "positive": None,
     }
     if oos_days and plateau is not None:
@@ -994,6 +1166,8 @@ def run_plateau_scan(
                 "open_position_pnl_pct": oos_simulation["open_position_pnl_pct"],
                 "max_positions_used": oos_simulation["max_positions_used"],
                 "max_open_loss_pct": oos_simulation["max_open_loss_pct"],
+                "upper_breakout_days": oos_simulation["upper_breakout_days"],
+                "lower_breakout_days": oos_simulation["lower_breakout_days"],
                 "positive": oos_simulation["net_return_pct"] > 0,
             }
         )
@@ -1059,6 +1233,9 @@ def run_plateau_scan(
         "max_positions": max(1, int(config.max_positions)),
         "grid_capital": config.grid_amount * max(1, int(config.max_positions)),
         "anchor_policy": config.anchor_policy,
+        "band_lower": band_lower,
+        "band_upper": band_upper,
+        "band_source": band_source,
         "min_loops": config.min_loops,
         "lot_size": config.lot_size,
         "slippage_pct": config.slippage_pct,

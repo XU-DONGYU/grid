@@ -35,6 +35,8 @@ function saveInputs() {
       hmHistory: $('heatmap-history-days').value,
       plMode: $('plateau-mode').value,
       plAnchorPolicy: $('plateau-anchor-policy').value,
+      plBandLower: $('plateau-band-lower').value,
+      plBandUpper: $('plateau-band-upper').value,
       plKStart: $('plateau-k-start').value,
       plKEnd: $('plateau-k-end').value,
       plKStep: $('plateau-k-step').value,
@@ -97,6 +99,8 @@ function restoreInputs() {
       const anchorOptions = Array.from($('plateau-anchor-policy').options).map(option => option.value);
       if (anchorOptions.includes(saved.plAnchorPolicy)) $('plateau-anchor-policy').value = saved.plAnchorPolicy;
     }
+    if (saved.plBandLower !== undefined) $('plateau-band-lower').value = saved.plBandLower;
+    if (saved.plBandUpper !== undefined) $('plateau-band-upper').value = saved.plBandUpper;
     if (saved.plKStart !== undefined && saved.plKStart !== '') $('plateau-k-start').value = saved.plKStart;
     if (saved.plKEnd !== undefined && saved.plKEnd !== '') $('plateau-k-end').value = saved.plKEnd;
     if (saved.plKStep !== undefined && saved.plKStep !== '') $('plateau-k-step').value = saved.plKStep;
@@ -249,7 +253,7 @@ async function generateHeatmap() {
   }
 }
 
-const ANCHOR_POLICIES = ['daily_roll', 'fixed_band', 'fixed', 'periodic'];
+const ANCHOR_POLICIES = ['fixed', 'fixed_band', 'periodic', 'daily_roll'];
 
 function plateauRowFromResult(policy, data) {
   const plateau = data.plateau;
@@ -361,6 +365,18 @@ async function generatePlateau() {
     $('plateau-status').textContent = 'k 范围必须满足 0 < 起点 < 终点，步长 > 0';
     return;
   }
+  const bandLowerText = $('plateau-band-lower').value.trim();
+  const bandUpperText = $('plateau-band-upper').value.trim();
+  const bandLower = bandLowerText ? Number(bandLowerText) : null;
+  const bandUpper = bandUpperText ? Number(bandUpperText) : null;
+  if ((bandLower === null) !== (bandUpper === null)) {
+    $('plateau-status').textContent = '区间下限和上限必须同时填写，或同时留空使用自动区间';
+    return;
+  }
+  if (bandLower !== null && (!Number.isFinite(bandLower) || !Number.isFinite(bandUpper) || bandLower <= 0 || bandUpper <= bandLower)) {
+    $('plateau-status').textContent = '手动区间必须满足 0 < 下限 < 上限';
+    return;
+  }
 
   saveInputs();
   $('plateau-btn').disabled = true;
@@ -389,6 +405,8 @@ async function generatePlateau() {
     k_step: kStep,
     mode: $('plateau-mode').value,
     anchor_policy: $('plateau-anchor-policy').value,
+    band_lower: bandLower,
+    band_upper: bandUpper,
     plateau_window: windowPoints,
     island_drop_ratio: islandRatio,
     front_run_offset_pct: frontRunOffset,
