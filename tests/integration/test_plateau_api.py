@@ -120,11 +120,18 @@ def test_plateau_contract(plateau_client: TestClient) -> None:
     assert contract.data.live is not None
     assert contract.data.live.k_star == contract.data.plateau.k_star
     assert contract.data.prior_validation.prior_anchor == 0.70
-    assert contract.data.summary.trading_days == 50
+    assert contract.data.summary.trading_days == 35
+    assert contract.data.summary.in_sample_days == 35
+    assert contract.data.summary.oos_days == 15
+    assert contract.data.summary.total_days == 50
     assert contract.data.summary.max_positions == 8
     assert contract.data.context.max_positions == 8
+    assert contract.data.context.anchor_policy == "daily_roll"
     assert contract.data.curve[0].max_positions == 8
     assert contract.data.plateau.k_star_max_positions_used >= 1
+    assert contract.data.holdout.enabled is True
+    assert contract.data.holdout.k_star == contract.data.plateau.k_star
+    assert contract.data.holdout.net_return_pct is not None
     assert contract.data.data_snapshot["source"] == "BaoStock"
 
 

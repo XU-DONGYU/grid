@@ -390,18 +390,26 @@ class PlateauRequest(ApiModel):
     code: str
     grid_amount: float = Field(10_000, ge=100, le=1e8)
     max_positions: int = Field(8, ge=1, le=50)
+    lot_size: int = Field(100, ge=0, le=10000)
     fee: float = Field(0.025, ge=0, le=0.3)
     min_fee: float = Field(5.0, ge=0, le=100)
     spread_pct: float = Field(0.05, ge=0, le=5)
+    slippage_pct: float = Field(0.02, ge=0, le=5)
     friction_pct: float | None = Field(None, ge=0, le=10)
     k_start: float = Field(0.20, gt=0, le=10)
     k_end: float = Field(2.50, gt=0, le=10)
     k_step: float = Field(0.05, gt=0, le=1)
     mode: Literal["dynamic", "static_mean"] = "dynamic"
+    anchor_policy: Literal["daily_roll", "fixed_band", "fixed", "periodic"] = "daily_roll"
+    band_lookback_days: int = Field(60, ge=5, le=500)
+    band_buffer_pct: float = Field(2.0, ge=0, le=20)
+    reanchor_period_days: int = Field(20, ge=1, le=250)
     atr_period: int = Field(14, ge=2, le=100)
     plateau_window: int = Field(5, ge=2, le=21)
     plateau_stability_penalty: float = Field(0.5, ge=0, le=5)
     plateau_center_left_ratio: float = Field(0.35, ge=0, le=1)
+    min_loops: int = Field(10, ge=0, le=10000)
+    open_loss_penalty: float = Field(0.5, ge=0, le=5)
     island_drop_ratio: float = Field(0.25, ge=0, le=2)
     island_min_drop_pct: float = Field(0.20, ge=0, le=100)
     front_run_thresholds: list[float] = Field(
@@ -411,6 +419,9 @@ class PlateauRequest(ApiModel):
     front_run_offset_pct: float = Field(0.20, ge=0, le=1)
     pullback_sell_pct: float = Field(0.30, ge=0, le=5)
     rebound_buy_pct: float = Field(0.30, ge=0, le=5)
+    price_limit_pct: float = Field(10.0, ge=0, le=50)
+    min_bars_per_day: int = Field(1, ge=1, le=100)
+    holdout_ratio: float = Field(0.30, ge=0, le=0.8)
     history_days: int = Field(500, ge=60, le=3000)
 
     @field_validator("front_run_thresholds")
@@ -441,6 +452,7 @@ class PlateauPoint(ApiModel):
     total_return_pct: float
     max_open_loss_pct: float
     risk_adjusted_return_pct: float
+    selection_value: float
     capital_return_pct: float
     used_capital_return_pct: float
     capital_utilization_pct: float
@@ -450,6 +462,12 @@ class PlateauPoint(ApiModel):
     open_position_count: int
     net_profit_yuan: float
     open_position_pnl_yuan: float
+    slippage_paid_pct: float
+    cash_remaining: float
+    peak_invested: float
+    capital_constrained_buys: int
+    limit_locked_days: int
+    incomplete_days: int
     below_safe: bool
     is_island: bool
     in_plateau: bool
@@ -472,6 +490,7 @@ class PlateauBand(ApiModel):
     window_requested: int
     window_adjusted: bool
     mean_net_return_pct: float
+    mean_selection_value: float
     stdev_net_return_pct: float
     variance: float
     plateau_score: float
@@ -535,15 +554,47 @@ class PlateauLive(ApiModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class PlateauHoldout(ApiModel):
+    enabled: bool
+    reason: str | None = None
+    in_sample_start: str | None = None
+    in_sample_end: str | None = None
+    oos_start: str | None = None
+    oos_end: str | None = None
+    in_sample_days: int
+    oos_days: int
+    k_star: float | None = None
+    net_return_pct: float | None = None
+    capital_return_pct: float | None = None
+    loops: int | None = None
+    open_position_pnl_pct: float | None = None
+    max_positions_used: int | None = None
+    max_open_loss_pct: float | None = None
+    positive: bool | None = None
+
+
 class PlateauSummary(ApiModel):
     k_count: int
     bar_count: int
     trading_days: int
+    in_sample_days: int
+    oos_days: int
+    total_days: int
     mean_atr_pct: float
     friction_pct: float
     k_min_safe: float
     max_positions: int
     grid_capital: float
+    anchor_policy: str
+    min_loops: int
+    lot_size: int
+    slippage_pct: float
+    price_limit_pct: float
+    open_loss_penalty: float
+    holdout_enabled: bool
+    holdout_reason: str | None = None
+    incomplete_days: int
+    missing_5m_days: int
     forbidden_k_count: int
     all_forbidden: bool
     island_count: int
@@ -553,6 +604,7 @@ class PlateauSummary(ApiModel):
     raw_best_net_return_pct: float
     best_inside_forbidden: bool
     plateau_at_safe_boundary: bool
+    plateau_at_right_edge: bool
     live_unavailable_reason: str | None = None
     sample_note: str
 
@@ -572,10 +624,14 @@ class PlateauContext(ApiModel):
     fee: float
     min_fee: float
     spread_pct: float
+    slippage_pct: float
     friction_pct: float
     mean_atr_pct: float
     k_min_safe: float
     mode: str
+    anchor_policy: str
+    lot_size: int
+    price_limit_pct: float
     bar_count: int
     daily_count: int
 
@@ -587,6 +643,7 @@ class PlateauData(ApiModel):
     islands: list[PlateauIsland]
     plateau: PlateauBand | None = None
     prior_validation: PlateauPriorValidation
+    holdout: PlateauHoldout
     live: PlateauLive | None = None
     summary: PlateauSummary
     config: dict

@@ -11,6 +11,7 @@ from grid_analyzer.backtest.plateau import (
     PlateauConfig,
     _build_day_steps,
     _DayStep,
+    build_daily_anchors,
     build_live_output,
     compute_atr_series,
     detect_islands,
@@ -23,13 +24,14 @@ from grid_analyzer.backtest.plateau import (
     select_plateau,
     simulate_k,
 )
+from grid_analyzer.constants import STAMP_TAX
 
 
 def point(k: float, value: float) -> dict:
     return {
         "k": k,
         "net_return_pct": value,
-        "loops": 1,
+        "loops": 50,
         "open_position_pnl_pct": 0.0,
         "total_return_pct": value,
         "below_safe": False,
@@ -50,6 +52,21 @@ def bar(day: str, time: str, open_: float, close: float, high: float, low: float
         "volume": 1000,
         "amount": 10000,
     }
+
+
+def make_config(**overrides: object) -> PlateauConfig:
+    values: dict = {
+        "grid_amount": 10_000,
+        "fee": 0.0,
+        "min_fee": 0.0,
+        "spread_pct": 0.0,
+        "slippage_pct": 0.0,
+        "lot_size": 0,
+        "price_limit_pct": 0.0,
+        "holdout_ratio": 0.0,
+    }
+    values.update(overrides)
+    return PlateauConfig(**values)
 
 
 def test_plateau_k_values_default_range() -> None:
@@ -125,15 +142,12 @@ def test_step_trigger_buys_after_crossing_and_respects_t_plus_one() -> None:
         "2025-01-03": [bar("2025-01-03", "09:35", 100, 100, 101, 97.99)],
         "2025-01-04": [bar("2025-01-04", "09:35", 100, 100, 101, 99)],
     }
-    result = simulate_k(
-        bars_by_day,
-        day_steps,
-        PlateauConfig(grid_amount=10_000, friction_pct=0.1),
-        friction_pct=0.1,
-    )
+    result = simulate_k(bars_by_day, day_steps, make_config())
+    gross_pct = (100 / 98 - 1) * 100
+    stamp_pct = (100 / 98) * STAMP_TAX * 100
     assert result["loops"] == 1
     assert result["open_position_count"] == 0
-    assert result["net_return_pct"] == pytest.approx((100 / 98 - 1) * 100 - 0.1)
+    assert result["net_return_pct"] == pytest.approx(gross_pct - stamp_pct)
     assert result["max_positions_used"] == 1
 
 
@@ -146,12 +160,7 @@ def test_one_cent_short_of_grid_line_does_not_fill() -> None:
         "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 101, 98.01)],
         "2025-01-03": [bar("2025-01-03", "09:35", 100, 100, 101, 99)],
     }
-    result = simulate_k(
-        bars_by_day,
-        day_steps,
-        PlateauConfig(grid_amount=10_000, friction_pct=0.1),
-        friction_pct=0.1,
-    )
+    result = simulate_k(bars_by_day, day_steps, make_config())
     assert result["loops"] == 0
     assert result["open_position_count"] == 0
 
@@ -165,14 +174,11 @@ def test_static_mode_uses_percentage_step() -> None:
         "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 101, 97.9)],
         "2025-01-03": [bar("2025-01-03", "09:35", 100, 100, 101, 99)],
     }
-    result = simulate_k(
-        bars_by_day,
-        day_steps,
-        PlateauConfig(grid_amount=10_000, friction_pct=0.1, mode="static_mean"),
-        friction_pct=0.1,
-    )
+    result = simulate_k(bars_by_day, day_steps, make_config(mode="static_mean"))
+    gross_pct = (100 / 98 - 1) * 100
+    stamp_pct = (100 / 98) * STAMP_TAX * 100
     assert result["loops"] == 1
-    assert result["net_return_pct"] == pytest.approx((100 / 98 - 1) * 100 - 0.1)
+    assert result["net_return_pct"] == pytest.approx(gross_pct - stamp_pct)
 
 
 def test_rolling_ladder_rearms_in_a_trend_and_caps_positions() -> None:
@@ -188,16 +194,120 @@ def test_rolling_ladder_rearms_in_a_trend_and_caps_positions() -> None:
         "2025-01-04": [bar("2025-01-04", "09:35", 104, 104, 104, 99)],
         "2025-01-05": [bar("2025-01-05", "09:35", 106, 107, 107, 105)],
     }
-    result = simulate_k(
-        bars_by_day,
-        day_steps,
-        PlateauConfig(grid_amount=10_000, max_positions=2, friction_pct=0.1),
-        friction_pct=0.1,
-    )
+    result = simulate_k(bars_by_day, day_steps, make_config(max_positions=2))
     assert result["loops"] == 4
     assert result["max_positions_used"] == 2
     assert result["max_positions"] == 2
     assert result["capital_return_pct"] == pytest.approx(result["net_return_pct"] / 2)
+
+
+def test_anchor_policies_use_only_prior_data() -> None:
+    atr_series = [
+        AtrPoint("2025-01-02", 100.0, 2.0, 2.0, high=101.0, low=99.0),
+        AtrPoint("2025-01-03", 105.0, 2.0, 2.0, high=106.0, low=104.0),
+        AtrPoint("2025-01-06", 120.0, 2.0, 2.0, high=121.0, low=119.0),
+        AtrPoint("2025-01-07", 121.0, 2.0, 2.0, high=122.0, low=120.0),
+    ]
+    days = ["2025-01-02", "2025-01-03", "2025-01-06", "2025-01-07"]
+    daily = build_daily_anchors(atr_series, days, PlateauConfig(anchor_policy="daily_roll"))
+    assert daily["2025-01-03"] == pytest.approx(100.0)
+    assert daily["2025-01-06"] == pytest.approx(105.0)
+    assert daily["2025-01-07"] == pytest.approx(120.0)
+
+    fixed = build_daily_anchors(atr_series, days, PlateauConfig(anchor_policy="fixed"))
+    assert fixed["2025-01-03"] == pytest.approx(100.0)
+    assert fixed["2025-01-06"] == pytest.approx(100.0)
+    assert fixed["2025-01-07"] == pytest.approx(100.0)
+
+    periodic = build_daily_anchors(
+        atr_series,
+        days,
+        PlateauConfig(anchor_policy="periodic", reanchor_period_days=2),
+    )
+    assert periodic["2025-01-03"] == pytest.approx(100.0)
+    assert periodic["2025-01-06"] == pytest.approx(105.0)
+    assert periodic["2025-01-07"] == pytest.approx(105.0)
+
+    band = build_daily_anchors(
+        atr_series,
+        days,
+        PlateauConfig(anchor_policy="fixed_band", band_lookback_days=2, band_buffer_pct=0.0),
+    )
+    assert band["2025-01-03"] == pytest.approx(100.0)
+    assert band["2025-01-06"] == pytest.approx(105.0)
+    assert band["2025-01-07"] == pytest.approx(120.0)
+
+
+def test_lot_rounding_and_capital_constraint() -> None:
+    day_steps = {
+        "2025-01-02": step("2025-01-02", 2.0, 100.0),
+        "2025-01-03": step("2025-01-03", 2.0, 102.0),
+    }
+    bars_by_day = {
+        "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 100, 95)],
+        "2025-01-03": [bar("2025-01-03", "09:35", 102, 102, 102, 101)],
+    }
+    traded = simulate_k(
+        bars_by_day,
+        day_steps,
+        make_config(lot_size=100, max_positions=1),
+    )
+    assert traded["loops"] == 1
+    assert traded["capital_constrained_buys"] == 0
+    assert traded["open_position_count"] == 0
+
+    expensive = simulate_k(
+        {
+            "2025-01-02": [bar("2025-01-02", "09:35", 200, 200, 200, 190)],
+            "2025-01-03": [bar("2025-01-03", "09:35", 200, 200, 200, 199)],
+        },
+        {
+            "2025-01-02": step("2025-01-02", 4.0, 200.0),
+            "2025-01-03": step("2025-01-03", 4.0, 204.0),
+        },
+        make_config(lot_size=100, max_positions=1),
+    )
+    assert expensive["loops"] == 0
+    assert expensive["open_position_count"] == 0
+    assert expensive["capital_constrained_buys"] > 0
+
+
+def test_slippage_reduces_net_return() -> None:
+    day_steps = {
+        "2025-01-02": step("2025-01-02", 2.0, 100.0),
+        "2025-01-03": step("2025-01-03", 2.0, 102.0),
+    }
+    bars_by_day = {
+        "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 100, 95)],
+        "2025-01-03": [bar("2025-01-03", "09:35", 102, 102, 102, 101)],
+    }
+    clean = simulate_k(bars_by_day, day_steps, make_config())
+    slipped = simulate_k(bars_by_day, day_steps, make_config(slippage_pct=0.5))
+    assert slipped["net_return_pct"] < clean["net_return_pct"]
+    assert slipped["slippage_paid_pct"] > 0
+
+
+def test_price_limit_lock_blocks_fills() -> None:
+    day_steps = {
+        "2025-01-02": _DayStep(
+            "2025-01-02", step_pct=2.0, step_abs=2.0, atr_pct=2.0, anchor=100.0, prev_close=100.0
+        ),
+        "2025-01-03": _DayStep(
+            "2025-01-03", step_pct=2.0, step_abs=2.0, atr_pct=2.0, anchor=100.0, prev_close=100.0
+        ),
+    }
+    bars_by_day = {
+        "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 100, 100)],
+        "2025-01-03": [bar("2025-01-03", "09:35", 90, 90, 90, 90)],
+    }
+    result = simulate_k(
+        bars_by_day,
+        day_steps,
+        make_config(price_limit_pct=10.0),
+    )
+    assert result["limit_locked_days"] == 1
+    assert result["loops"] == 0
+    assert result["open_position_count"] == 0
 
 
 def test_detect_islands_flags_single_spike() -> None:
@@ -225,6 +335,29 @@ def test_select_plateau_uses_high_mean_low_variance_and_center_left() -> None:
     assert plateau["k_star"] == 0.35
     assert plateau["window_points"] == 3
     assert plateau["profitable"] is True
+
+
+def test_select_plateau_penalises_open_losses() -> None:
+    def with_open(k: float, net: float, open_pnl: float) -> dict:
+        item = point(k, net)
+        item["open_position_pnl_pct"] = open_pnl
+        item["selection_value"] = net - 0.5 * max(0.0, -open_pnl)
+        return item
+
+    points = [
+        with_open(0.2, 100.0, -100.0),
+        with_open(0.25, 90.0, -20.0),
+        with_open(0.3, 80.0, 0.0),
+        with_open(0.35, 70.0, 0.0),
+        with_open(0.4, 60.0, 0.0),
+    ]
+    plateau = select_plateau(
+        points,
+        PlateauConfig(plateau_window=3, plateau_stability_penalty=0.5, open_loss_penalty=0.5),
+    )
+    assert plateau is not None
+    assert plateau["k_left"] == 0.25
+    assert plateau["k_right"] == 0.35
 
 
 def test_prior_overlap_detects_band_and_mismatch() -> None:
@@ -330,11 +463,8 @@ def make_scan_bars(days: list[str]) -> tuple[list[dict], list[dict]]:
 def test_run_plateau_scan_returns_chart_ready_payload() -> None:
     days = trading_days(40)
     bars_5m, daily = make_scan_bars(days)
-    config = PlateauConfig(
+    config = make_config(
         grid_amount=100_000,
-        fee=0.0,
-        min_fee=0.0,
-        spread_pct=0.0,
         k_start=0.2,
         k_end=1.0,
         k_step=0.1,
@@ -354,6 +484,28 @@ def test_run_plateau_scan_returns_chart_ready_payload() -> None:
     assert all(0.0 <= item["net_return_pct"] or item["loops"] >= 0 for item in result["curve"])
 
 
+def test_run_plateau_scan_holdout_uses_in_sample_only_for_selection() -> None:
+    days = trading_days(60)
+    bars_5m, daily = make_scan_bars(days)
+    config = make_config(
+        grid_amount=100_000,
+        k_start=0.2,
+        k_end=1.0,
+        k_step=0.1,
+        plateau_window=3,
+        holdout_ratio=0.3,
+    )
+    result = run_plateau_scan(bars_5m, daily, config)
+    assert result["summary"]["in_sample_days"] == 42
+    assert result["summary"]["oos_days"] == 18
+    assert result["summary"]["total_days"] == 60
+    assert result["holdout"]["enabled"] is True
+    assert result["holdout"]["k_star"] == result["plateau"]["k_star"]
+    assert result["holdout"]["net_return_pct"] is not None
+    assert result["data"]["oos_start"] == days[42]
+    assert result["data"]["end"] == days[41]
+
+
 def test_run_plateau_scan_marks_all_forbidden_without_live_output() -> None:
     days = trading_days(40)
     bars_5m, daily = make_scan_bars(days)
@@ -365,6 +517,8 @@ def test_run_plateau_scan_marks_all_forbidden_without_live_output() -> None:
         k_end=1.0,
         k_step=0.1,
         plateau_window=3,
+        holdout_ratio=0.0,
+        price_limit_pct=0.0,
     )
     result = run_plateau_scan(bars_5m, daily, config)
     assert result["summary"]["all_forbidden"] is True

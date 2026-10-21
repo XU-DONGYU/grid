@@ -34,6 +34,7 @@ function saveInputs() {
       hmMinOos: $('heatmap-min-oos-days').value,
       hmHistory: $('heatmap-history-days').value,
       plMode: $('plateau-mode').value,
+      plAnchorPolicy: $('plateau-anchor-policy').value,
       plKStart: $('plateau-k-start').value,
       plKEnd: $('plateau-k-end').value,
       plKStep: $('plateau-k-step').value,
@@ -41,6 +42,12 @@ function saveInputs() {
       plMaxPositions: $('plateau-max-positions').value,
       plWindow: $('plateau-window').value,
       plSpread: $('plateau-spread').value,
+      plSlippage: $('plateau-slippage').value,
+      plLotSize: $('plateau-lot-size').value,
+      plPriceLimit: $('plateau-price-limit').value,
+      plMinLoops: $('plateau-min-loops').value,
+      plOpenLossPenalty: $('plateau-open-loss-penalty').value,
+      plHoldoutRatio: $('plateau-holdout-ratio').value,
       plIslandRatio: $('plateau-island-ratio').value,
       plFrontRunOffset: $('plateau-front-run-offset').value,
       plHistory: $('plateau-history-days').value,
@@ -83,6 +90,10 @@ function restoreInputs() {
       const modeOptions = Array.from($('plateau-mode').options).map(option => option.value);
       if (modeOptions.includes(saved.plMode)) $('plateau-mode').value = saved.plMode;
     }
+    if (saved.plAnchorPolicy) {
+      const anchorOptions = Array.from($('plateau-anchor-policy').options).map(option => option.value);
+      if (anchorOptions.includes(saved.plAnchorPolicy)) $('plateau-anchor-policy').value = saved.plAnchorPolicy;
+    }
     if (saved.plKStart !== undefined && saved.plKStart !== '') $('plateau-k-start').value = saved.plKStart;
     if (saved.plKEnd !== undefined && saved.plKEnd !== '') $('plateau-k-end').value = saved.plKEnd;
     if (saved.plKStep !== undefined && saved.plKStep !== '') $('plateau-k-step').value = saved.plKStep;
@@ -90,6 +101,12 @@ function restoreInputs() {
     if (saved.plMaxPositions !== undefined && saved.plMaxPositions !== '') $('plateau-max-positions').value = saved.plMaxPositions;
     if (saved.plWindow !== undefined && saved.plWindow !== '') $('plateau-window').value = saved.plWindow;
     if (saved.plSpread !== undefined && saved.plSpread !== '') $('plateau-spread').value = saved.plSpread;
+    if (saved.plSlippage !== undefined && saved.plSlippage !== '') $('plateau-slippage').value = saved.plSlippage;
+    if (saved.plLotSize !== undefined && saved.plLotSize !== '') $('plateau-lot-size').value = saved.plLotSize;
+    if (saved.plPriceLimit !== undefined && saved.plPriceLimit !== '') $('plateau-price-limit').value = saved.plPriceLimit;
+    if (saved.plMinLoops !== undefined && saved.plMinLoops !== '') $('plateau-min-loops').value = saved.plMinLoops;
+    if (saved.plOpenLossPenalty !== undefined && saved.plOpenLossPenalty !== '') $('plateau-open-loss-penalty').value = saved.plOpenLossPenalty;
+    if (saved.plHoldoutRatio !== undefined && saved.plHoldoutRatio !== '') $('plateau-holdout-ratio').value = saved.plHoldoutRatio;
     if (saved.plIslandRatio !== undefined && saved.plIslandRatio !== '') $('plateau-island-ratio').value = saved.plIslandRatio;
     if (saved.plFrontRunOffset !== undefined && saved.plFrontRunOffset !== '') $('plateau-front-run-offset').value = saved.plFrontRunOffset;
     if (saved.plHistory !== undefined && saved.plHistory !== '') $('plateau-history-days').value = saved.plHistory;
@@ -237,6 +254,13 @@ async function generatePlateau() {
   const gridAmount = Math.max(100, parseFloat($('plateau-grid-amount').value) || 10000);
   const maxPositions = Math.min(50, Math.max(1, parseInt($('plateau-max-positions').value, 10) || 8));
   const spread = Math.max(0, parseFloat($('plateau-spread').value) || 0);
+  const slippage = Math.max(0, parseFloat($('plateau-slippage').value) || 0);
+  const lotSize = Math.max(0, parseInt($('plateau-lot-size').value, 10) || 0);
+  const priceLimit = Math.max(0, parseFloat($('plateau-price-limit').value) || 0);
+  const minLoops = Math.max(0, parseInt($('plateau-min-loops').value, 10) || 0);
+  const openLossPenalty = Math.max(0, parseFloat($('plateau-open-loss-penalty').value) || 0.5);
+  const holdoutValue = parseFloat($('plateau-holdout-ratio').value);
+  const holdoutRatio = (Number.isFinite(holdoutValue) ? Math.min(80, Math.max(0, holdoutValue)) : 30) / 100;
   const islandRatio = Math.max(0, parseFloat($('plateau-island-ratio').value) || 0.25);
   const frontRunOffset = Math.max(0, parseFloat($('plateau-front-run-offset').value) || 0.2);
   const historyDays = Math.max(60, parseInt($('plateau-history-days').value, 10) || 500);
@@ -262,13 +286,20 @@ async function generatePlateau() {
       code,
       grid_amount: gridAmount,
       max_positions: maxPositions,
+      lot_size: lotSize,
       fee,
       min_fee: minfee,
       spread_pct: spread,
+      slippage_pct: slippage,
+      price_limit_pct: priceLimit,
+      min_loops: minLoops,
+      open_loss_penalty: openLossPenalty,
+      holdout_ratio: holdoutRatio,
       k_start: kStart,
       k_end: kEnd,
       k_step: kStep,
       mode: $('plateau-mode').value,
+      anchor_policy: $('plateau-anchor-policy').value,
       plateau_window: windowPoints,
       island_drop_ratio: islandRatio,
       front_run_offset_pct: frontRunOffset,

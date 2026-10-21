@@ -103,9 +103,10 @@ function chart(data) {
   const prior = priorBand + priorLine;
 
   const plateau = data.plateau;
+  const plateauColor = plateau && plateau.profitable ? PLATEAU_COLOR : '#6b7280';
   const plateauBand = plateau
-    ? `<rect x="${x(plateau.k_left)}" y="${T}" width="${Math.max(0, x(plateau.k_right) - x(plateau.k_left))}" height="${ih}" fill="${PLATEAU_COLOR}" opacity=".14"/>`
-      + `<text x="${(x(plateau.k_left) + x(plateau.k_right)) / 2}" y="${T + ih - 8}" font-size="10" fill="${PLATEAU_COLOR}" text-anchor="middle">实测参数高原 ${fmt(plateau.k_left, 2)}–${fmt(plateau.k_right, 2)}</text>`
+    ? `<rect x="${x(plateau.k_left)}" y="${T}" width="${Math.max(0, x(plateau.k_right) - x(plateau.k_left))}" height="${ih}" fill="${plateauColor}" opacity=".14"/>`
+      + `<text x="${(x(plateau.k_left) + x(plateau.k_right)) / 2}" y="${T + ih - 8}" font-size="10" fill="${plateauColor}" text-anchor="middle">${plateau.profitable ? '实测参数高原' : '候选高原（未通过收益/浮亏筛选）'} ${fmt(plateau.k_left, 2)}–${fmt(plateau.k_right, 2)}</text>`
     : '';
 
   const islandMarks = (data.islands || []).map(island => {
@@ -130,21 +131,22 @@ function chart(data) {
         if (!point) return '';
         const cx = x(Number(plateau.k_star));
         const cy = yNet(Number(point.net_return_pct));
-        return `<polygon points="${starPoints(cx, cy)}" fill="${STAR_COLOR}" stroke="#8a6508" stroke-width="1"/>`
-          + `<text x="${cx}" y="${cy - 15}" font-size="10" fill="#8a6508" text-anchor="middle" font-weight="700">k* ${fmt(plateau.k_star, 2)}</text>`;
+        const starColor = plateau.profitable ? STAR_COLOR : '#6b7280';
+        return `<polygon points="${starPoints(cx, cy)}" fill="${starColor}" stroke="#4b5563" stroke-width="1"/>`
+          + `<text x="${cx}" y="${cy - 15}" font-size="10" fill="${starColor}" text-anchor="middle" font-weight="700">k* ${fmt(plateau.k_star, 2)}</text>`;
       })()
     : '';
 
   return `<div class="plateau-chart">
     <div class="plateau-legend">
-      <span><i style="background:${NET_COLOR}"></i>归一化净收益率（左轴）</span>
+      <span><i style="background:${NET_COLOR}"></i>单格累计净收益（左轴）</span>
       <span><i style="background:${LOOP_COLOR}"></i>有效闭环次数 n(k)（右轴）</span>
       <span><i style="background:${PLATEAU_COLOR}"></i>实测高原</span>
       <span><i style="background:${PRIOR_COLOR}"></i>理论先验带</span>
       <span><i style="background:${ISLAND_COLOR}"></i>孤岛/禁区</span>
     </div>
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="ATR 归一化参数高原倒 U 型图">
-      <text x="${L}" y="${T - 10}" font-size="11" fill="${NET_COLOR}">净收益率 %</text>
+      <text x="${L}" y="${T - 10}" font-size="11" fill="${NET_COLOR}">单格累计净收益 %</text>
       <text x="${W - R}" y="${T - 10}" font-size="11" fill="${LOOP_COLOR}" text-anchor="end">闭环次数</text>
       ${netTicks}${loopTicks}${xTicks.join('')}
       ${forbidden}${prior}${plateauBand}${islandMarks}
@@ -158,18 +160,27 @@ function chart(data) {
   </div>`;
 }
 
+const ANCHOR_TEXT = {
+  daily_roll: '每日重锚',
+  fixed_band: '区间边界重锚',
+  fixed: '固定锚点',
+  periodic: '周期重锚',
+};
+
 function contextCard(data) {
   const context = data.context || {};
   const mode = context.mode === 'static_mean' ? '静态均值' : '动态自适应';
+  const anchor = ANCHOR_TEXT[context.anchor_policy] || context.anchor_policy;
   return `<div class="plateau-context">
     <div><span>股票</span><b>${esc(context.name || '')} ${esc(context.code || '')}</b></div>
-    <div><span>锚定模式</span><b>${mode}</b></div>
+    <div><span>步长 / 锚定</span><b>${mode} · ${esc(anchor)}</b></div>
     <div><span>最新 ATR(14)</span><b>${pct(context.latest_atr_pct)}</b></div>
     <div><span>区间日均 ATR%</span><b>${pct(context.mean_atr_pct)}</b></div>
     <div><span>双边摩擦 C%</span><b>${pct(context.friction_pct)}</b></div>
     <div><span>安全底线 k<sub>min</sub></span><b>${num(context.k_min_safe, 3)}</b></div>
-    <div><span>最大持仓槽位</span><b>${fmt(context.max_positions, 0)} 格</b></div>
-    <div><span>网格资金</span><b>${fmt(context.grid_capital, 0)} 元</b></div>
+    <div><span>最大持仓 / 网格资金</span><b>${fmt(context.max_positions, 0)} 格 / ${fmt(context.grid_capital, 0)} 元</b></div>
+    <div><span>整手 / 滑点 / 涨跌停</span><b>${fmt(context.lot_size, 0)} 股 / ${pct(context.slippage_pct)} / ${pct(context.price_limit_pct)}</b></div>
+    <div><span>最小闭环 / 浮亏惩罚</span><b>${fmt(data.summary?.min_loops, 0)} / ${fmt(data.summary?.open_loss_penalty, 2)}</b></div>
     <div><span>5 分钟数据</span><b>${esc(context.data_start)} ~ ${esc(context.data_end)}（${fmt(context.bar_count, 0)} 根）</b></div>
   </div>`;
 }
@@ -184,11 +195,36 @@ function summaryCard(data) {
   return `<div class="plateau-summary">
     <div><span>参数高原</span><b>${plateauText}</b></div>
     <div><span>最优系数 k*</span><b>${plateau ? fmt(plateau.k_star, 3) : '—'}</b></div>
-    <div><span>高原平均净收益</span><b>${plateau ? pct(plateau.mean_net_return_pct) : '—'}</b></div>
+    <div><span>高原平均单格净收益</span><b>${plateau ? pct(plateau.mean_net_return_pct) : '—'}</b></div>
     <div><span>k* 占网格资金</span><b>${plateau ? pct(plateau.k_star_capital_return_pct) : '—'}</b></div>
     <div><span>k* 闭环 / 最大持仓</span><b>${plateau ? `${fmt(plateau.k_star_loops, 0)} / ${fmt(plateau.k_star_max_positions_used, 0)}` : '—'}</b></div>
     <div><span>剔除孤岛</span><b>${fmt(summary.island_count, 0)} 个</b></div>
     <div><span>先验重合</span><b>${prior.matches ? '是' : '否'}</b></div>
+  </div>`;
+}
+
+function holdoutCard(data) {
+  const holdout = data.holdout || {};
+  if (!holdout.enabled) {
+    return `<div class="plateau-prior-card">
+      <div class="blind-title">留出验证</div>
+      <div class="note">${esc(holdout.reason || '未启用留出验证。')}</div>
+    </div>`;
+  }
+  const tag = holdout.positive
+    ? '<span class="bt-tag ok">留出段正收益</span>'
+    : '<span class="bt-tag stop">留出段未盈利</span>';
+  return `<div class="plateau-prior-card">
+    <div class="blind-title">留出验证 ${tag}</div>
+    <div class="plateau-prior-grid">
+      <div><span>样本内区间</span><b>${esc(holdout.in_sample_start)} ~ ${esc(holdout.in_sample_end)}</b></div>
+      <div><span>留出区间</span><b>${esc(holdout.oos_start)} ~ ${esc(holdout.oos_end)}</b></div>
+      <div><span>锁定 k*</span><b>${fmt(holdout.k_star, 3)}</b></div>
+      <div><span>留出净收益</span><b>${pct(holdout.net_return_pct)}</b></div>
+      <div><span>占网格资金</span><b>${pct(holdout.capital_return_pct)}</b></div>
+      <div><span>闭环 / 最大持仓</span><b>${fmt(holdout.loops, 0)} / ${fmt(holdout.max_positions_used, 0)}</b></div>
+    </div>
+    <div class="note">留出段只评估样本内选出的 k*，不参与高原选择。</div>
   </div>`;
 }
 
@@ -198,12 +234,27 @@ function boundaryWarning(data) {
   if (summary.best_inside_forbidden) {
     messages.push(`原始最优 k=${fmt(summary.raw_best_k, 2)} 落在手续费磨损禁区，说明该标的的历史频率优势不足以覆盖 10 倍成本安全线。`);
   }
+  if (summary.plateau_found && !summary.positive_plateau) {
+    messages.push('合规高原扣除期末浮亏后没有正选参值，因此不输出实盘步长。');
+  }
   if (summary.plateau_at_safe_boundary) {
     messages.push('合规高原贴近安全底线左边缘，实盘应优先观察右移后的高原中心，而不是继续压缩步长。');
+  }
+  if (summary.plateau_at_right_edge) {
+    messages.push('合规高原顶到 k 扫描右边界，真实最优可能更大；请扩大 k 终点后重新扫描。');
   }
   const prior = data.prior_validation || {};
   if (Number.isFinite(Number(summary.k_min_safe)) && Number(prior.prior_right) <= Number(summary.k_min_safe)) {
     messages.push('0.65–0.80 × ATR% 理论先验带整体落在手续费磨损禁区，说明该标的当前波动率相对摩擦成本偏低。');
+  }
+  if (Number(summary.missing_5m_days) > 0 || Number(summary.incomplete_days) > 0) {
+    messages.push(`存在缺失或不完整的 5 分钟交易日（缺失 ${fmt(summary.missing_5m_days, 0)} 天，低 bar 数 ${fmt(summary.incomplete_days, 0)} 天），这些交易日已跳过撮合。`);
+  }
+  if ((data.curve || []).some(point => Number(point.capital_constrained_buys) > 0)) {
+    messages.push('部分档位因单格资金不足一手或现金不足被跳过，请提高单格资金 M 或降低整手股数。');
+  }
+  if ((data.curve || []).some(point => Number(point.limit_locked_days) > 0)) {
+    messages.push('检测到涨跌停封死日，这些交易日不撮合；阈值可在高级参数中调整。');
   }
   if (!messages.length) return '';
   return `<div class="risk-item">${messages.map(esc).join('<br>')}</div>`;
@@ -290,6 +341,7 @@ function curveTable(data) {
     <td class="num">${fmt(point.k, 2)}</td>
     <td class="num">${pct(point.net_return_pct)}</td>
     <td class="num">${pct(point.capital_return_pct)}</td>
+    <td class="num">${pct(point.selection_value)}</td>
     <td class="num">${fmt(point.loops, 0)}</td>
     <td class="num">${fmt(point.winning_loops, 0)}</td>
     <td class="num">${pct(point.avg_loop_return_pct)}</td>
@@ -301,7 +353,7 @@ function curveTable(data) {
     <summary>完整 k 扫描明细</summary>
     <div class="table-scroll">
       <table class="intraday-table">
-        <thead><tr><th>k</th><th>单格净收益</th><th>占网格资金</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>最大持仓</th><th>标记</th></tr></thead>
+        <thead><tr><th>k</th><th>单格净收益</th><th>占网格资金</th><th>选参值</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>最大持仓</th><th>标记</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -320,10 +372,11 @@ export function renderPlateau(data, container) {
     ${chart(data)}
     <div class="plateau-cards">
       ${liveCard(data)}
+      ${holdoutCard(data)}
       ${breakoutCard(data)}
       ${priorCard(data)}
     </div>
     ${curveTable(data)}
-    <div class="note">实验模块：以 k × ATR(14)% 为唯一横轴，使用 0/1 阶跃触线撮合和滚动阶梯网格。每个交易日以前一交易日收盘价重新锚定，最多持有 N 个单格资金槽位，按格线成交，卖出受 T+1 约束。ATR 只使用前一交易日及更早数据，静态均值模式使用扩展的历史均值。结果是样本内研究参数，不构成投资建议，也不替代滚动样本外验证和最终盲测。</div>
+    <div class="note">实验模块：以 k × ATR(14)% 为唯一横轴，使用 0/1 阶跃触线撮合。按所选锚定策略布置阶梯，最多持有 N 个单格资金槽位，按格线成交，卖出受 T+1 约束；已处理 A 股整手、现金上限、滑点、涨跌停锁定和停牌/缺失日。默认前 70% 样本内选参、后 30% 留出验证，选参时对期末浮亏按惩罚系数扣减。结果不构成投资建议，也不替代滚动样本外验证和最终盲测。</div>
   `;
 }
