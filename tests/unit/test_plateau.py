@@ -166,6 +166,51 @@ def test_one_cent_short_of_grid_line_does_not_fill() -> None:
     assert result["open_position_count"] == 0
 
 
+def test_penetration_requires_crossing_by_configured_amount() -> None:
+    day_steps = {
+        "2025-01-02": step("2025-01-02", 2.0),
+        "2025-01-03": step("2025-01-03", 2.0),
+        "2025-01-06": step("2025-01-06", 2.0),
+        "2025-01-07": step("2025-01-07", 2.0),
+    }
+    bars_by_day = {
+        "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 101, 98.0)],
+        "2025-01-03": [bar("2025-01-03", "09:35", 100, 100, 101, 97.99)],
+        "2025-01-06": [bar("2025-01-06", "09:35", 100, 100, 100.0, 99)],
+        "2025-01-07": [bar("2025-01-07", "09:35", 100, 100, 100.01, 99)],
+    }
+    result = simulate_k(
+        bars_by_day,
+        day_steps,
+        make_config(penetration_abs=0.01),
+    )
+    assert result["loops"] == 1
+    assert result["first_trade_day"] == "2025-01-03"
+    assert result["last_trade_day"] == "2025-01-07"
+
+
+def test_ending_equity_splits_realized_and_open_pnl() -> None:
+    day_steps = {
+        "2025-01-02": step("2025-01-02", 2.0),
+        "2025-01-03": step("2025-01-03", 2.0),
+    }
+    bars_by_day = {
+        "2025-01-02": [bar("2025-01-02", "09:35", 100, 100, 99, 97.99)],
+        "2025-01-03": [bar("2025-01-03", "09:35", 99, 99, 99, 98)],
+    }
+    result = simulate_k(
+        bars_by_day,
+        day_steps,
+        make_config(penetration_abs=0.01),
+    )
+    assert result["loops"] == 0
+    assert result["realized_profit_yuan"] == pytest.approx(0.0)
+    assert result["open_position_pnl_yuan"] == pytest.approx(100.0)
+    assert result["total_pnl_yuan"] == pytest.approx(100.0)
+    assert result["ending_equity_yuan"] == pytest.approx(1_000_100.0)
+    assert result["ending_equity_return_pct"] == pytest.approx(0.01)
+
+
 def test_static_mode_uses_percentage_step() -> None:
     day_steps = {
         "2025-01-02": step("2025-01-02", 2.0),
@@ -383,7 +428,7 @@ def test_stop_loss_liquidates_and_restarts_band() -> None:
     result = simulate_k(
         bars_by_day,
         day_steps,
-        make_config(max_positions=1, stop_loss_pct=5.0, restart_cooldown_days=0),
+        make_config(max_positions=1, stop_loss_pct=5.0, restart_cooldown_days=0, penetration_abs=0.0),
     )
     assert result["stop_count"] == 1
     assert result["restart_count"] == 1
@@ -420,7 +465,7 @@ def test_stop_loss_cooldown_delays_restart() -> None:
     result = simulate_k(
         bars_by_day,
         day_steps,
-        make_config(max_positions=1, stop_loss_pct=5.0, restart_cooldown_days=1),
+        make_config(max_positions=1, stop_loss_pct=5.0, restart_cooldown_days=1, penetration_abs=0.0),
     )
     assert result["stop_count"] == 1
     assert result["stopped_days"] == 1

@@ -121,7 +121,7 @@ function chart(data) {
     const cy = yNet(Number(point.net_return_pct));
     const color = point.is_island ? ISLAND_COLOR : point.is_optimal ? STAR_COLOR : NET_COLOR;
     return `<circle cx="${cx}" cy="${cy}" r="${point.is_optimal ? 4 : 2.6}" fill="${color}">`
-      + `<title>k=${fmt(point.k, 2)}，净收益 ${pct(point.net_return_pct)}，闭环 ${fmt(point.loops, 0)} 次，期末浮盈亏 ${pct(point.open_position_pnl_pct)}</title>`
+      + `<title>k=${fmt(point.k, 2)}，单格净收益 ${pct(point.net_return_pct)}，闭环 ${fmt(point.loops, 0)} 次，期末浮盈亏 ${pct(point.open_position_pnl_pct)}，期末总净值 ${fmt(point.ending_equity_yuan, 2)} 元</title>`
       + '</circle>';
   }).join('');
 
@@ -181,7 +181,8 @@ function contextCard(data) {
     <div><span>双边摩擦 C%</span><b>${pct(context.friction_pct)}</b></div>
     <div><span>安全底线 k<sub>min</sub></span><b>${num(context.k_min_safe, 3)}</b></div>
     <div><span>最大持仓 / 总资金</span><b>${fmt(context.max_positions, 0)} 格 / ${fmt(context.capital, 0)} 元</b></div>
-    <div><span>每格股数 / 滑点 / 涨跌停</span><b>${fmt(context.shares_per_grid, 0)} 股 / ${pct(context.slippage_pct)} / ${pct(context.price_limit_pct)}</b></div>
+    <div><span>每格股数 / 穿透 / 滑点</span><b>${fmt(context.shares_per_grid, 0)} 股 / ${fmt(context.penetration_abs, 3)} 元 / ${pct(context.slippage_pct)}</b></div>
+    <div><span>涨跌停阈值</span><b>${pct(context.price_limit_pct)}</b></div>
     <div><span>破网止损 / 重启冷却</span><b>${pct(context.stop_loss_pct)} / ${fmt(context.restart_cooldown_days, 0)} 天</b></div>
     <div><span>最小闭环 / 浮亏惩罚</span><b>${fmt(data.summary?.min_loops, 0)} / ${fmt(data.summary?.open_loss_penalty, 2)}</b></div>
     <div><span>5 分钟数据</span><b>${esc(context.data_start)} ~ ${esc(context.data_end)}（${fmt(context.bar_count, 0)} 根）</b></div>
@@ -206,6 +207,23 @@ function summaryCard(data) {
   </div>`;
 }
 
+function equityCard(data) {
+  const plateau = data.plateau;
+  if (!plateau) return '';
+  const capital = Number(data.context?.capital || 0);
+  return `<div class="plateau-prior-card">
+    <div class="blind-title">期末总净值拆分（k* = ${fmt(plateau.k_star, 3)}）</div>
+    <div class="plateau-prior-grid">
+      <div><span>期初资金</span><b>${fmt(capital, 2)} 元</b></div>
+      <div><span>已实现套利利润</span><b>${fmt(plateau.k_star_realized_profit_yuan, 2)} 元</b></div>
+      <div><span>期末持仓浮动盈亏</span><b>${fmt(plateau.k_star_open_position_pnl_yuan, 2)} 元</b></div>
+      <div><span>期末总净值</span><b>${fmt(plateau.k_star_ending_equity_yuan, 2)} 元</b></div>
+      <div><span>总收益</span><b>${pct(plateau.k_star_ending_equity_return_pct)}</b></div>
+    </div>
+    <div class="note">期末总净值 = 期初资金 + 已实现套利利润 + 期末持仓浮动盈亏。</div>
+  </div>`;
+}
+
 function holdoutCard(data) {
   const holdout = data.holdout || {};
   if (!holdout.enabled) {
@@ -227,6 +245,8 @@ function holdoutCard(data) {
       <div><span>占总资金</span><b>${pct(holdout.capital_return_pct)}</b></div>
       <div><span>闭环 / 最大持仓</span><b>${fmt(holdout.loops, 0)} / ${fmt(holdout.max_positions_used, 0)}</b></div>
       <div><span>区间外天数（上/下）</span><b>${fmt(holdout.upper_breakout_days, 0)} / ${fmt(holdout.lower_breakout_days, 0)}</b></div>
+      <div><span>已实现 / 浮动盈亏</span><b>${fmt(holdout.realized_profit_yuan, 2)} / ${fmt(holdout.open_position_pnl_yuan, 2)} 元</b></div>
+      <div><span>期末总净值</span><b>${fmt(holdout.ending_equity_yuan, 2)} 元（${pct(holdout.ending_equity_return_pct)}）</b></div>
     </div>
     <div class="note">留出段只评估样本内选出的 k*，不参与高原选择。</div>
   </div>`;
@@ -413,6 +433,9 @@ function curveTable(data) {
     <td class="num">${fmt(point.winning_loops, 0)}</td>
     <td class="num">${pct(point.avg_loop_return_pct)}</td>
     <td class="num">${pct(point.open_position_pnl_pct)}</td>
+    <td class="num">${fmt(point.realized_profit_yuan, 2)}</td>
+    <td class="num">${fmt(point.open_position_pnl_yuan, 2)}</td>
+    <td class="num">${fmt(point.ending_equity_yuan, 2)}</td>
     <td class="num">${fmt(point.max_positions_used, 0)} / ${fmt(point.max_positions, 0)}</td>
     <td class="num">${fmt(point.stop_count, 0)} / ${fmt(point.restart_count, 0)}</td>
     <td>${point.below_safe ? '手续费禁区' : point.is_island ? '孤岛' : point.is_optimal ? 'k*' : point.in_plateau ? '高原' : ''}</td>
@@ -421,7 +444,7 @@ function curveTable(data) {
     <summary>完整 k 扫描明细</summary>
     <div class="table-scroll">
       <table class="intraday-table">
-        <thead><tr><th>k</th><th>单格收益</th><th>总资金收益</th><th>选参值</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>最大持仓</th><th>止损/重启</th><th>标记</th></tr></thead>
+        <thead><tr><th>k</th><th>单格收益</th><th>总资金收益</th><th>选参值</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>已实现(元)</th><th>期末浮盈(元)</th><th>期末净值(元)</th><th>最大持仓</th><th>止损/重启</th><th>标记</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -440,6 +463,7 @@ export function renderPlateau(data, container) {
     ${chart(data)}
     <div class="plateau-cards">
       ${liveCard(data)}
+      ${equityCard(data)}
       ${holdoutCard(data)}
       ${breakoutCard(data)}
       ${priorCard(data)}

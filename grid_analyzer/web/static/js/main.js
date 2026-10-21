@@ -43,6 +43,7 @@ function saveInputs() {
       plMaxPositions: $('plateau-max-positions').value,
       plWindow: $('plateau-window').value,
       plSpread: $('plateau-spread').value,
+      plPenetration: $('plateau-penetration').value,
       plSlippage: $('plateau-slippage').value,
       plPriceLimit: $('plateau-price-limit').value,
       plStopLoss: $('plateau-stop-loss').value,
@@ -105,6 +106,7 @@ function restoreInputs() {
     if (saved.plMaxPositions !== undefined && saved.plMaxPositions !== '') $('plateau-max-positions').value = saved.plMaxPositions;
     if (saved.plWindow !== undefined && saved.plWindow !== '') $('plateau-window').value = saved.plWindow;
     if (saved.plSpread !== undefined && saved.plSpread !== '') $('plateau-spread').value = saved.plSpread;
+    if (saved.plPenetration !== undefined && saved.plPenetration !== '') $('plateau-penetration').value = saved.plPenetration;
     if (saved.plSlippage !== undefined && saved.plSlippage !== '') $('plateau-slippage').value = saved.plSlippage;
     if (saved.plPriceLimit !== undefined && saved.plPriceLimit !== '') $('plateau-price-limit').value = saved.plPriceLimit;
     if (saved.plStopLoss !== undefined && saved.plStopLoss !== '') $('plateau-stop-loss').value = saved.plStopLoss;
@@ -336,6 +338,7 @@ async function generatePlateau() {
   const capital = Math.max(1000, parseFloat($('capital').value) || 100000);
   const maxPositions = Math.min(50, Math.max(1, parseInt($('plateau-max-positions').value, 10) || 8));
   const spread = Math.max(0, parseFloat($('plateau-spread').value) || 0);
+  const penetration = Math.max(0, parseFloat($('plateau-penetration').value) || 0);
   const slippage = Math.max(0, parseFloat($('plateau-slippage').value) || 0);
   const priceLimit = Math.max(0, parseFloat($('plateau-price-limit').value) || 0);
   const stopLoss = Math.max(0, parseFloat($('plateau-stop-loss').value) || 0);
@@ -387,6 +390,7 @@ async function generatePlateau() {
     fee,
     min_fee: minfee,
     spread_pct: spread,
+    penetration_abs: penetration,
     slippage_pct: slippage,
     price_limit_pct: priceLimit,
     stop_loss_pct: stopLoss,

@@ -164,10 +164,10 @@ k_min_safe = 10 × C% / mean(ATR14%)
 - 自动区间取启动前 `band_lookback_days` 日高低点，保留 `band_buffer_pct` 缓冲；手动区间可覆盖。
 - 密度在启动时按 `k × ATR%` 冻结，之后不随每日 ATR 变化。
 - 区间内按几何步长生成档位：`level_i = lower × (1 + step%)^i`。
-- 价格下穿档位买入；买入后的目标卖价为上一档。
+- 价格必须下穿档位至少 `penetration_abs` 元才买入；目标卖价也必须被上穿至少该金额才卖出。
 - 涨破上限只持有现金等待回区间；跌破下限只持有仓位等待回区间；默认不强制移动区间。
-- 每个档位是一个独立槽位，预算 M；最多同时持有 `max_positions` 个槽位。
-- 最低价触及格线才成交；差一分钱不成交。
+- 每个档位是一个独立槽位；最多同时持有 `max_positions` 个槽位。
+- 默认 `penetration_abs = 0.01` 元，即击穿一分钱才成交；设为 0 表示触线即成交。
 - 当日买入当日不可卖出（T+1）。
 - 跳空时只处理前收盘价与开盘价之间的档位，不买开盘价上方的档位。
 - 每次触发固定买入 100 股。
@@ -190,6 +190,8 @@ k_min_safe = 10 × C% / mean(ATR14%)
 net_return_pct = Σ 单次闭环净利%
 n(k) = 有效止盈闭环次数（不含止损清仓）
 capital_return_pct = Σ 净利润 / 总资金 × 100
+total_pnl_yuan = realized_profit_yuan + open_position_pnl_yuan
+ending_equity_yuan = capital + total_pnl_yuan
 selection_value = net_return_pct - open_loss_penalty × max(0, -期末浮盈亏)
 ```
 

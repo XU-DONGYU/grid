@@ -192,6 +192,7 @@
         <summary>高级修正参数</summary>
         <div class="heatmap-controls" style="margin-top:12px">
           <div class="field"><label><span class="param-label" data-tip="历史买卖价差代理。实际成交价会扣除半价差，双边共扣一次价差。">历史价差代理 %</span></label><input id="plateau-spread" type="number" value="0.05" min="0" max="5" step="0.01"></div>
+          <div class="field"><label><span class="param-label" data-tip="价格必须穿过格线至少该金额才成交。默认 0.01 元（击穿一分钱）；设为 0 表示触线即成交。">穿透撮合（元）</span></label><input id="plateau-penetration" type="number" value="0.01" min="0" max="10" step="0.01"></div>
           <div class="field"><label><span class="param-label" data-tip="单边滑点/冲击代理。买入加价、卖出减价，各扣一次；不建模完整订单簿深度。">单边滑点/冲击 %</span></label><input id="plateau-slippage" type="number" value="0.02" min="0" max="5" step="0.01"></div>
           <div class="field"><label><span class="param-label" data-tip="涨跌停封死日识别阈值。0 表示关闭；主板通常 10，创业板/科创板 20，北交所 30。">涨跌停阈值 %（0=关闭）</span></label><input id="plateau-price-limit" type="number" value="10" min="0" max="50" step="1"></div>
           <div class="field"><label><span class="param-label" data-tip="默认 0：跌破下限只等待价格回到区间，不强制止损。设为大于 0 时，跌破区间下限该比例后清仓并按冷却天数重启。">破网止损 %（0=等待回区间）</span></label><input id="plateau-stop-loss" type="number" value="0" min="0" max="50" step="1"></div>

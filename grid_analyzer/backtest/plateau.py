@@ -27,6 +27,7 @@ class PlateauConfig:
     capital: float = 100_000.0
     shares_per_grid: int = 100
     max_positions: int = 8
+    penetration_abs: float = 0.01
     fee: float = 0.025
     min_fee: float = 5.0
     spread_pct: float = 0.05
@@ -438,6 +439,7 @@ def simulate_k(
         max(0.0, float(config.slippage_pct))
         + max(0.0, float(config.spread_pct)) / 2.0
     ) / 100.0
+    penetration = max(0.0, float(config.penetration_abs))
 
     def invested() -> float:
         return sum(float(lot["cost"]) for lot in open_lots)
@@ -618,10 +620,10 @@ def simulate_k(
         # Gap handling: sell filled lots whose target is below the open, then
         # fill any buy levels that the open already gapped through.
         for lot in list(open_lots):
-            if lot["buy_day"] < day and open_price >= float(lot["target"]):
+            if lot["buy_day"] < day and open_price >= float(lot["target"]) + penetration:
                 close_lot(lot, float(lot["target"]))
         if band_mode:
-            start = bisect.bisect_left(level_values, open_price)
+            start = bisect.bisect_left(level_values, open_price + penetration)
             end = (
                 bisect.bisect_right(level_values, prev_close)
                 if prev_close > 0
@@ -642,7 +644,7 @@ def simulate_k(
             for level_index, level in levels:
                 if len(open_lots) >= max_positions:
                     break
-                if open_price <= level and open_lot(level, level_index, step_abs):
+                if open_price + penetration <= level and open_lot(level, level_index, step_abs):
                     used_levels.add(level_index)
         max_positions_used = max(max_positions_used, len(open_lots))
 
@@ -656,7 +658,7 @@ def simulate_k(
                 if current > previous:
                     for lot in list(open_lots):
                         target = float(lot["target"])
-                        if lot["buy_day"] < day and previous < target <= current:
+                        if lot["buy_day"] < day and previous < target + penetration <= current:
                             close_lot(lot, target)
                 elif current < previous:
                     if stop_price is not None and current <= stop_price:
@@ -664,8 +666,8 @@ def simulate_k(
                         stopped_today = True
                         break
                     if band_mode:
-                        start = bisect.bisect_left(level_values, current)
-                        end = bisect.bisect_left(level_values, previous)
+                        start = bisect.bisect_left(level_values, current + penetration)
+                        end = bisect.bisect_left(level_values, previous + penetration)
                         for index in range(end - 1, start - 1, -1):
                             if len(open_lots) >= max_positions:
                                 break
@@ -685,7 +687,7 @@ def simulate_k(
                                 break
                             if level_index in used_levels:
                                 continue
-                            if current <= level < previous and open_lot(level, level_index, step_abs):
+                            if current + penetration <= level < previous + penetration and open_lot(level, level_index, step_abs):
                                 used_levels.add(level_index)
 
             max_positions_used = max(max_positions_used, len(open_lots))
@@ -725,6 +727,8 @@ def simulate_k(
         (last_price - float(lot["price"])) * float(lot["shares"])
         for lot in open_lots
     )
+    total_pnl_yuan = net_profit_yuan + open_position_pnl_yuan
+    ending_equity_yuan = config.capital + total_pnl_yuan
     return {
         "loops": loops,
         "winning_loops": winning_loops,
@@ -752,7 +756,19 @@ def simulate_k(
         "cash_remaining": cash,
         "peak_invested": peak_invested,
         "net_profit_yuan": net_profit_yuan,
+        "realized_profit_yuan": net_profit_yuan,
         "open_position_pnl_yuan": open_position_pnl_yuan,
+        "total_pnl_yuan": total_pnl_yuan,
+        "ending_equity_yuan": ending_equity_yuan,
+        "realized_return_pct": (
+            net_profit_yuan / config.capital * 100.0 if config.capital > 0 else 0.0
+        ),
+        "open_position_return_pct": (
+            open_position_pnl_yuan / config.capital * 100.0 if config.capital > 0 else 0.0
+        ),
+        "ending_equity_return_pct": (
+            total_pnl_yuan / config.capital * 100.0 if config.capital > 0 else 0.0
+        ),
         "capital_constrained_buys": capital_constrained_buys,
         "limit_locked_days": limit_locked_days,
         "incomplete_days": incomplete_days,
@@ -873,6 +889,11 @@ def select_plateau(
         "k_star_open_position_count": int(center.get("open_position_count", 0)),
         "k_star_stop_count": int(center.get("stop_count", 0)),
         "k_star_restart_count": int(center.get("restart_count", 0)),
+        "k_star_realized_profit_yuan": float(center.get("realized_profit_yuan", 0.0)),
+        "k_star_open_position_pnl_yuan": float(center.get("open_position_pnl_yuan", 0.0)),
+        "k_star_total_pnl_yuan": float(center.get("total_pnl_yuan", 0.0)),
+        "k_star_ending_equity_yuan": float(center.get("ending_equity_yuan", 0.0)),
+        "k_star_ending_equity_return_pct": float(center.get("ending_equity_return_pct", 0.0)),
         "profitable": mean > 0 and net_mean > 0,
     }
 
@@ -1134,7 +1155,13 @@ def run_plateau_scan(
                 "avg_positions": simulation["avg_positions"],
                 "open_position_count": simulation["open_position_count"],
                 "net_profit_yuan": simulation["net_profit_yuan"],
+                "realized_profit_yuan": simulation["realized_profit_yuan"],
                 "open_position_pnl_yuan": simulation["open_position_pnl_yuan"],
+                "total_pnl_yuan": simulation["total_pnl_yuan"],
+                "ending_equity_yuan": simulation["ending_equity_yuan"],
+                "realized_return_pct": simulation["realized_return_pct"],
+                "open_position_return_pct": simulation["open_position_return_pct"],
+                "ending_equity_return_pct": simulation["ending_equity_return_pct"],
                 "slippage_paid_pct": simulation["slippage_paid_pct"],
                 "cash_remaining": simulation["cash_remaining"],
                 "peak_invested": simulation["peak_invested"],
@@ -1176,6 +1203,11 @@ def run_plateau_scan(
         "max_open_loss_pct": None,
         "upper_breakout_days": None,
         "lower_breakout_days": None,
+        "realized_profit_yuan": None,
+        "open_position_pnl_yuan": None,
+        "total_pnl_yuan": None,
+        "ending_equity_yuan": None,
+        "ending_equity_return_pct": None,
         "positive": None,
     }
     if oos_days and plateau is not None:
@@ -1203,6 +1235,11 @@ def run_plateau_scan(
                 "max_open_loss_pct": oos_simulation["max_open_loss_pct"],
                 "upper_breakout_days": oos_simulation["upper_breakout_days"],
                 "lower_breakout_days": oos_simulation["lower_breakout_days"],
+                "realized_profit_yuan": oos_simulation["realized_profit_yuan"],
+                "open_position_pnl_yuan": oos_simulation["open_position_pnl_yuan"],
+                "total_pnl_yuan": oos_simulation["total_pnl_yuan"],
+                "ending_equity_yuan": oos_simulation["ending_equity_yuan"],
+                "ending_equity_return_pct": oos_simulation["ending_equity_return_pct"],
                 "positive": oos_simulation["net_return_pct"] > 0,
             }
         )
@@ -1273,6 +1310,7 @@ def run_plateau_scan(
         "band_source": band_source,
         "min_loops": config.min_loops,
         "shares_per_grid": config.shares_per_grid,
+        "penetration_abs": config.penetration_abs,
         "slippage_pct": config.slippage_pct,
         "price_limit_pct": config.price_limit_pct,
         "stop_loss_pct": config.stop_loss_pct,

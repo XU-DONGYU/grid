@@ -391,6 +391,7 @@ class PlateauRequest(ApiModel):
     capital: float = Field(100_000, ge=1000, le=1e8)
     shares_per_grid: int = Field(100, ge=1, le=10000)
     max_positions: int = Field(8, ge=1, le=50)
+    penetration_abs: float = Field(0.01, ge=0, le=10)
     fee: float = Field(0.025, ge=0, le=0.3)
     min_fee: float = Field(5.0, ge=0, le=100)
     spread_pct: float = Field(0.05, ge=0, le=5)
@@ -474,7 +475,13 @@ class PlateauPoint(ApiModel):
     avg_positions: float
     open_position_count: int
     net_profit_yuan: float
+    realized_profit_yuan: float
     open_position_pnl_yuan: float
+    total_pnl_yuan: float
+    ending_equity_yuan: float
+    realized_return_pct: float
+    open_position_return_pct: float
+    ending_equity_return_pct: float
     slippage_paid_pct: float
     cash_remaining: float
     peak_invested: float
@@ -524,6 +531,11 @@ class PlateauBand(ApiModel):
     k_star_open_position_count: int
     k_star_stop_count: int
     k_star_restart_count: int
+    k_star_realized_profit_yuan: float
+    k_star_open_position_pnl_yuan: float
+    k_star_total_pnl_yuan: float
+    k_star_ending_equity_yuan: float
+    k_star_ending_equity_return_pct: float
     profitable: bool
 
 
@@ -594,6 +606,11 @@ class PlateauHoldout(ApiModel):
     max_open_loss_pct: float | None = None
     upper_breakout_days: int | None = None
     lower_breakout_days: int | None = None
+    realized_profit_yuan: float | None = None
+    open_position_pnl_yuan: float | None = None
+    total_pnl_yuan: float | None = None
+    ending_equity_yuan: float | None = None
+    ending_equity_return_pct: float | None = None
     positive: bool | None = None
 
 
@@ -615,6 +632,7 @@ class PlateauSummary(ApiModel):
     band_source: str
     min_loops: int
     shares_per_grid: int
+    penetration_abs: float
     slippage_pct: float
     price_limit_pct: float
     stop_loss_pct: float
@@ -649,6 +667,7 @@ class PlateauContext(ApiModel):
     latest_atr_pct: float
     capital: float
     shares_per_grid: int
+    penetration_abs: float
     max_positions: int
     grid_capital: float
     fee: float
