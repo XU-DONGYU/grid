@@ -183,8 +183,7 @@
         <div class="field"><label><span class="param-label" data-tip="k 扫描下界。k 是无量纲系数，实际步长 = k × ATR%。">k 起点</span></label><input id="plateau-k-start" type="number" value="0.20" min="0.05" max="5" step="0.05"></div>
         <div class="field"><label><span class="param-label" data-tip="k 扫描上界。若高原顶到右边界，系统会提示扩大终点。">k 终点</span></label><input id="plateau-k-end" type="number" value="2.50" min="0.1" max="5" step="0.05"></div>
         <div class="field"><label><span class="param-label" data-tip="k 的扫描步长。默认 0.05，步长越小曲线越细但计算越慢。">k 步长</span></label><input id="plateau-k-step" type="number" value="0.05" min="0.01" max="0.5" step="0.01"></div>
-        <div class="field"><label><span class="param-label" data-tip="每个网格槽位的计划投入金额 M。实际买入受整手取整、佣金和现金约束。">单格资金 M（元）</span></label><input id="plateau-grid-amount" type="number" value="10000" min="100" step="1000"></div>
-        <div class="field"><label><span class="param-label" data-tip="最多同时持有的网格槽位数。网格总资金上限 = M × 该值。">最大持仓槽位</span></label><input id="plateau-max-positions" type="number" value="8" min="1" max="50" step="1"></div>
+        <div class="field"><label><span class="param-label" data-tip="每格固定买入 100 股。最多同时持有多少个网格槽位，受上方总资金和现金约束。">最大持仓槽位</span></label><input id="plateau-max-positions" type="number" value="8" min="1" max="50" step="1"></div>
         <div class="field"><label><span class="param-label" data-tip="高原滑动窗口包含的 k 点数。默认 5 个点，约 0.20 个 k 跨度。">高原窗口 W</span></label><input id="plateau-window" type="number" value="5" min="2" max="21" step="1"></div>
         <button id="plateau-btn" class="secondary-btn">生成 ATR 归一化高原</button>
         <span id="plateau-status" class="hint"></span>
@@ -194,7 +193,6 @@
         <div class="heatmap-controls" style="margin-top:12px">
           <div class="field"><label><span class="param-label" data-tip="历史买卖价差代理。实际成交价会扣除半价差，双边共扣一次价差。">历史价差代理 %</span></label><input id="plateau-spread" type="number" value="0.05" min="0" max="5" step="0.01"></div>
           <div class="field"><label><span class="param-label" data-tip="单边滑点/冲击代理。买入加价、卖出减价，各扣一次；不建模完整订单簿深度。">单边滑点/冲击 %</span></label><input id="plateau-slippage" type="number" value="0.02" min="0" max="5" step="0.01"></div>
-          <div class="field"><label><span class="param-label" data-tip="A 股整手股数。100 表示按一手取整；0 表示使用 M / 价格的归一化数量，适合纯研究比较。">整手股数（0=归一化）</span></label><input id="plateau-lot-size" type="number" value="100" min="0" max="10000" step="100"></div>
           <div class="field"><label><span class="param-label" data-tip="涨跌停封死日识别阈值。0 表示关闭；主板通常 10，创业板/科创板 20，北交所 30。">涨跌停阈值 %（0=关闭）</span></label><input id="plateau-price-limit" type="number" value="10" min="0" max="50" step="1"></div>
           <div class="field"><label><span class="param-label" data-tip="默认 0：跌破下限只等待价格回到区间，不强制止损。设为大于 0 时，跌破区间下限该比例后清仓并按冷却天数重启。">破网止损 %（0=等待回区间）</span></label><input id="plateau-stop-loss" type="number" value="0" min="0" max="50" step="1"></div>
           <div class="field"><label><span class="param-label" data-tip="止损清仓后等待多少个交易日再重启网格。0 表示下一交易日重启。">止损重启冷却天数</span></label><input id="plateau-restart-cooldown" type="number" value="0" min="0" max="60" step="1"></div>
@@ -208,7 +206,7 @@
         </div>
       </details>
       <div id="plateau-wrap"></div>
-      <div class="note">标准模式为固定区间网格：启动时用前 N 日高低点自动确定上下限，也可手动覆盖；密度在启动时确定，之后档位不动。涨破上限或跌破下限时默认只等待价格回到区间，不强制移仓；如需止损可把破网止损设为大于 0。计算使用 5 分钟 K 线做 0/1 阶跃触线撮合，按格线成交，支持 A 股整手、现金上限、滑点、涨跌停和停牌/缺失日。默认前 70% 选参、后 30% 留出验证；`daily_roll` 仅作为研究对照。结果不构成投资建议。</div>
+      <div class="note">标准模式为固定区间网格：启动时用前 N 日高低点自动确定上下限，也可手动覆盖；密度在启动时确定，之后档位不动。每格固定买入 100 股，使用页面上方“总资金”作为现金上限。涨破上限或跌破下限时默认只等待价格回到区间，不强制移仓；如需止损可把破网止损设为大于 0。计算使用 5 分钟 K 线做 0/1 阶跃触线撮合，按格线成交，支持滑点、涨跌停和停牌/缺失日。默认前 70% 选参、后 30% 留出验证；`daily_roll` 仅作为研究对照。结果不构成投资建议。</div>
     </div>
 
     <div class="panel" id="p-risk">

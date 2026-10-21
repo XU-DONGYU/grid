@@ -24,9 +24,9 @@ class InsufficientPlateauDataError(RuntimeError):
 class PlateauConfig:
     """Configuration for the ATR-normalised parameter-plateau scan."""
 
-    grid_amount: float = 10_000.0
+    capital: float = 100_000.0
+    shares_per_grid: int = 100
     max_positions: int = 8
-    lot_size: int = 100
     fee: float = 0.025
     min_fee: float = 5.0
     spread_pct: float = 0.05
@@ -142,14 +142,22 @@ def compute_atr_series(daily_bars: list[dict], period: int = 14) -> list[AtrPoin
     return points
 
 
-def effective_friction_pct(config: PlateauConfig) -> float:
-    """Round-trip friction as a percentage of one grid's notional."""
+def effective_friction_pct(
+    config: PlateauConfig,
+    reference_price: float | None = None,
+) -> float:
+    """Rate-based round-trip friction for the theoretical k floor.
+
+    The minimum commission is size-dependent and is deducted in the actual
+    per-trade P&L, not in this theoretical percentage.
+    """
     if config.friction_pct is not None:
         return max(0.0, float(config.friction_pct))
-    if config.grid_amount <= 0:
-        raise ValueError("单格资金必须为正")
-    fee_pct = max(float(config.fee), float(config.min_fee) / config.grid_amount * 100.0)
-    return 2.0 * fee_pct + STAMP_TAX * 100.0 + max(0.0, float(config.spread_pct))
+    return (
+        2.0 * float(config.fee)
+        + STAMP_TAX * 100.0
+        + max(0.0, float(config.spread_pct))
+    )
 
 
 def safe_k_floor(friction_pct: float, mean_atr_pct: float) -> float:
@@ -365,53 +373,42 @@ def fixed_step_pct(
 
 
 def _slot_shares(price: float, config: PlateauConfig) -> float:
-    """Shares affordable by one slot budget, respecting A-share lot size."""
-    if price <= 0 or config.grid_amount <= 0:
+    """Every filled trigger buys the same fixed number of shares."""
+    if price <= 0 or config.shares_per_grid <= 0:
         return 0.0
-    budget = config.grid_amount
-    if config.lot_size and config.lot_size > 0:
-        lot = int(config.lot_size)
-        lot_shares = int(budget / price / lot) * lot
-        while lot_shares > 0:
-            amount = lot_shares * price
-            fee = commission(amount, config.fee, config.min_fee)
-            if amount + fee <= budget + 1e-9:
-                break
-            lot_shares -= lot
-        return float(max(0, lot_shares))
-    shares = budget / price
-    for _ in range(3):
-        amount = shares * price
-        fee = commission(amount, config.fee, config.min_fee)
-        if amount + fee <= budget + 1e-9:
-            break
-        shares = max(0.0, (budget - fee) / price)
-    return shares
+    return float(config.shares_per_grid)
 
 
 def simulate_k(
     bars_by_day: dict[str, list[dict]],
     day_steps: dict[str, _DayStep],
     config: PlateauConfig,
+    normalization_price: float = 0.0,
 ) -> dict[str, Any]:
     """Simulate a rolling normalised ladder grid with 0/1 line fills.
 
     Each day places up to ``max_positions`` buy levels below the configured
     anchor.  Every filled level is an independent slot with budget
-    ``grid_amount``.  Positions are sold one step above their fill, subject to
+    ``shares_per_grid`` shares.  Positions are sold one step above their fill, subject to
     T+1.  A-share lot rounding, cash, slippage, price-limit locks and
     incomplete 5-minute days are handled explicitly.
     """
     days = sorted(bars_by_day)
     day_index = {day: index for index, day in enumerate(days)}
     max_positions = max(1, int(config.max_positions))
-    grid_capital = config.grid_amount * max_positions
+    grid_capital = config.capital
+    normalization_notional = (
+        float(config.shares_per_grid) * normalization_price
+        if normalization_price > 0
+        else config.capital
+    )
     cash = grid_capital
     open_lots: list[dict[str, Any]] = []
     loops = 0
     winning_loops = 0
     gross_return_pct = 0.0
     net_return_pct = 0.0
+    net_profit_total = 0.0
     loop_returns: list[float] = []
     max_open_loss_pct = 0.0
     max_positions_used = 0
@@ -445,9 +442,13 @@ def simulate_k(
     def invested() -> float:
         return sum(float(lot["cost"]) for lot in open_lots)
 
-    def close_lot(lot: dict[str, Any], target: float) -> None:
+    def close_lot(
+        lot: dict[str, Any],
+        target: float,
+        count_loop: bool = True,
+    ) -> None:
         nonlocal loops, winning_loops, gross_return_pct, net_return_pct
-        nonlocal last_trade_day, cash, actual_fees, slippage_paid
+        nonlocal last_trade_day, cash, actual_fees, slippage_paid, net_profit_total
         sell_price = max(0.01, target * (1.0 - slip))
         shares = float(lot["shares"])
         amount = shares * sell_price
@@ -460,13 +461,15 @@ def simulate_k(
         fees = float(lot["buy_fee"]) + fee + stamp
         actual_fees += fees
         slippage_paid += float(lot["buy_slippage"]) + shares * (target - sell_price)
-        gross_return_pct += gross / config.grid_amount * 100.0
-        net_return_pct += net / config.grid_amount * 100.0
-        loop_return = net / config.grid_amount * 100.0
-        loop_returns.append(loop_return)
-        loops += 1
-        if loop_return > 0:
-            winning_loops += 1
+        gross_return_pct += gross / normalization_notional * 100.0
+        net_return_pct += net / normalization_notional * 100.0
+        net_profit_total += net
+        if count_loop:
+            loop_return = net / float(lot["amount"]) * 100.0 if float(lot["amount"]) > 0 else 0.0
+            loop_returns.append(loop_return)
+            loops += 1
+            if loop_return > 0:
+                winning_loops += 1
         last_trade_day = day
         open_lots.remove(lot)
 
@@ -516,7 +519,7 @@ def simulate_k(
         nonlocal stop_count, last_stop_day
         for lot in list(open_lots):
             if lot["buy_day"] < day:
-                close_lot(lot, fill_price)
+                close_lot(lot, fill_price, count_loop=False)
         stopped = True
         post_stop_rolling = True
         restart_day_index = day_index.get(day, 0) + max(1, int(config.restart_cooldown_days) + 1)
@@ -545,11 +548,11 @@ def simulate_k(
                 last_day = day
                 for lot in list(open_lots):
                     if lot["buy_day"] < day:
-                        close_lot(lot, open_price)
+                        close_lot(lot, open_price, count_loop=False)
                 mark_to_market = sum(
                     (last_price - float(lot["price"])) * float(lot["shares"])
                     for lot in open_lots
-                ) / config.grid_amount * 100.0
+                ) / normalization_notional * 100.0
                 max_open_loss_pct = min(max_open_loss_pct, mark_to_market)
                 continue
             stopped = False
@@ -602,7 +605,7 @@ def simulate_k(
             mark_to_market = sum(
                 (last_price - float(lot["price"])) * float(lot["shares"])
                 for lot in open_lots
-            ) / config.grid_amount * 100.0
+            ) / normalization_notional * 100.0
             max_open_loss_pct = min(max_open_loss_pct, mark_to_market)
             continue
 
@@ -691,7 +694,7 @@ def simulate_k(
             mark_to_market = sum(
                 (last_price - float(lot["price"])) * float(lot["shares"])
                 for lot in open_lots
-            ) / config.grid_amount * 100.0
+            ) / normalization_notional * 100.0
             max_open_loss_pct = min(max_open_loss_pct, mark_to_market)
             if stopped_today:
                 break
@@ -705,7 +708,7 @@ def simulate_k(
             "last_price": last_price,
             "unrealized_pct": (
                 (last_price - float(lot["price"])) * float(lot["shares"])
-                / config.grid_amount * 100.0
+                / normalization_notional * 100.0
             ),
             "holding_days": day_index.get(last_day, 0) - day_index.get(lot["buy_day"], 0) + 1,
         }
@@ -717,23 +720,30 @@ def simulate_k(
     annualized = net_return_pct * TRADING_DAYS / trading_days if trading_days > 0 else 0.0
     average_loop = statistics.mean(loop_returns) if loop_returns else 0.0
     average_positions = position_sum / position_samples if position_samples else 0.0
-    net_profit_yuan = net_return_pct / 100.0 * config.grid_amount
-    open_position_pnl_yuan = open_position_pnl_pct / 100.0 * config.grid_amount
+    net_profit_yuan = net_profit_total
+    open_position_pnl_yuan = sum(
+        (last_price - float(lot["price"])) * float(lot["shares"])
+        for lot in open_lots
+    )
     return {
         "loops": loops,
         "winning_loops": winning_loops,
         "gross_return_pct": gross_return_pct,
         "net_return_pct": net_return_pct,
         "annualized_net_return_pct": annualized,
-        "friction_paid_pct": actual_fees / config.grid_amount * 100.0,
-        "slippage_paid_pct": slippage_paid / config.grid_amount * 100.0,
+        "friction_paid_pct": actual_fees / normalization_notional * 100.0,
+        "slippage_paid_pct": slippage_paid / normalization_notional * 100.0,
         "avg_loop_return_pct": average_loop,
         "open_position_pnl_pct": open_position_pnl_pct,
         "total_return_pct": net_return_pct + open_position_pnl_pct,
         "max_open_loss_pct": max_open_loss_pct,
-        "capital_return_pct": net_return_pct / max_positions,
-        "used_capital_return_pct": net_return_pct / max_positions_used if max_positions_used else 0.0,
-        "capital_utilization_pct": peak_invested / grid_capital * 100.0 if grid_capital else 0.0,
+        "capital_return_pct": (
+            net_profit_total / config.capital * 100.0 if config.capital > 0 else 0.0
+        ),
+        "used_capital_return_pct": (
+            net_profit_total / peak_invested * 100.0 if peak_invested > 0 else 0.0
+        ),
+        "capital_utilization_pct": peak_invested / config.capital * 100.0 if config.capital else 0.0,
         "max_positions": max_positions,
         "max_positions_used": max_positions_used,
         "avg_positions": average_positions,
@@ -970,7 +980,22 @@ def build_live_output(
     front_run = front_running_adjust(d_raw_pct, latest_atr_pct, k_min_safe, config)
     d_exec_pct = float(front_run["d_exec_pct"])
     k_exec = d_exec_pct / latest_atr_pct if latest_atr_pct > 0 else 0.0
-    net_edge_pct = d_exec_pct - friction_pct - 2.0 * max(0.0, float(config.slippage_pct))
+    trade_notional = float(config.shares_per_grid) * latest_price
+    fee_effective_pct = (
+        max(float(config.fee), float(config.min_fee) / trade_notional * 100.0)
+        if trade_notional > 0
+        else float(config.fee)
+    )
+    effective_friction_pct = (
+        2.0 * fee_effective_pct
+        + STAMP_TAX * 100.0
+        + max(0.0, float(config.spread_pct))
+    )
+    net_edge_pct = (
+        d_exec_pct
+        - effective_friction_pct
+        - 2.0 * max(0.0, float(config.slippage_pct))
+    )
     safe_floor_pct = k_min_safe * latest_atr_pct
     breakout_step = d_exec_pct + max(config.pullback_sell_pct, config.rebound_buy_pct)
     warnings: list[str] = []
@@ -990,6 +1015,7 @@ def build_live_output(
         "d_exec_abs": latest_price * d_exec_pct / 100.0,
         "k_exec": k_exec,
         "friction_pct": friction_pct,
+        "effective_friction_pct": effective_friction_pct,
         "net_edge_pct": net_edge_pct,
         "safe_floor_pct": safe_floor_pct,
         "front_run": front_run,
@@ -1014,7 +1040,7 @@ def run_plateau_scan(
     config = config or PlateauConfig()
     if not bars_5m or not daily_bars:
         raise InsufficientPlateauDataError("缺少 5 分钟或日线数据")
-    if config.grid_amount <= 0:
+    if config.capital <= 0:
         raise ValueError("单格资金必须为正")
     if config.mode not in {"dynamic", "static_mean"}:
         raise ValueError(f"不支持的锚定模式：{config.mode}")
@@ -1051,7 +1077,15 @@ def run_plateau_scan(
     if not valid_atr:
         raise InsufficientPlateauDataError("样本内 ATR 序列没有有效值")
     mean_atr_pct = statistics.mean(valid_atr)
-    friction_pct = effective_friction_pct(config)
+    in_sample_closes = [
+        point.close
+        for point in atr_series
+        if point.trading_day in in_days_set and point.close > 0
+    ]
+    reference_price = (
+        statistics.mean(in_sample_closes) if in_sample_closes else atr_series[-1].close
+    )
+    friction_pct = effective_friction_pct(config, reference_price)
     k_min_safe = safe_k_floor(friction_pct, mean_atr_pct)
     in_bars_by_day = {day: bars_by_day[day] for day in in_days}
     first_day = in_days[0] if in_days else days[0]
@@ -1073,7 +1107,7 @@ def run_plateau_scan(
             band=(band_lower, band_upper),
             start_step_pct=start_pct,
         )
-        simulation = simulate_k(in_bars_by_day, day_steps, config)
+        simulation = simulate_k(in_bars_by_day, day_steps, config, reference_price)
         below_safe = k_value < k_min_safe
         points.append(
             {
@@ -1156,6 +1190,7 @@ def run_plateau_scan(
             {day: bars_by_day[day] for day in oos_days},
             oos_steps,
             config,
+            reference_price,
         )
         holdout.update(
             {
@@ -1231,13 +1266,13 @@ def run_plateau_scan(
         "friction_pct": friction_pct,
         "k_min_safe": k_min_safe,
         "max_positions": max(1, int(config.max_positions)),
-        "grid_capital": config.grid_amount * max(1, int(config.max_positions)),
+        "grid_capital": config.capital,
         "anchor_policy": config.anchor_policy,
         "band_lower": band_lower,
         "band_upper": band_upper,
         "band_source": band_source,
         "min_loops": config.min_loops,
-        "lot_size": config.lot_size,
+        "shares_per_grid": config.shares_per_grid,
         "slippage_pct": config.slippage_pct,
         "price_limit_pct": config.price_limit_pct,
         "stop_loss_pct": config.stop_loss_pct,

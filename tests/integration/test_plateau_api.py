@@ -98,7 +98,7 @@ def test_plateau_contract(plateau_client: TestClient) -> None:
         "/api/plateau",
         json={
             "code": "002541",
-            "grid_amount": 100_000,
+            "capital": 1_000_000,
             "fee": 0,
             "min_fee": 0,
             "spread_pct": 0,
@@ -126,7 +126,10 @@ def test_plateau_contract(plateau_client: TestClient) -> None:
     assert contract.data.summary.oos_days == 15
     assert contract.data.summary.total_days == 50
     assert contract.data.summary.max_positions == 8
+    assert contract.data.summary.shares_per_grid == 100
     assert contract.data.context.max_positions == 8
+    assert contract.data.context.shares_per_grid == 100
+    assert contract.data.context.capital == 1_000_000
     assert contract.data.context.anchor_policy == "fixed"
     assert contract.data.context.band_lower > 0
     assert contract.data.context.band_upper > contract.data.context.band_lower

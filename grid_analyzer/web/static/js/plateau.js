@@ -177,10 +177,11 @@ function contextCard(data) {
     <div><span>固定区间</span><b>${fmt(context.band_lower, 3)} – ${fmt(context.band_upper, 3)} · ${esc({auto: '自动', manual: '手动', fallback: '兜底'}[context.band_source] || context.band_source)}</b></div>
     <div><span>最新 ATR(14)</span><b>${pct(context.latest_atr_pct)}</b></div>
     <div><span>区间日均 ATR%</span><b>${pct(context.mean_atr_pct)}</b></div>
+    <div><span>单边佣金 / 最低佣金</span><b>${pct(context.fee, 3)} / ${fmt(context.min_fee, 0)} 元</b></div>
     <div><span>双边摩擦 C%</span><b>${pct(context.friction_pct)}</b></div>
     <div><span>安全底线 k<sub>min</sub></span><b>${num(context.k_min_safe, 3)}</b></div>
-    <div><span>最大持仓 / 网格资金</span><b>${fmt(context.max_positions, 0)} 格 / ${fmt(context.grid_capital, 0)} 元</b></div>
-    <div><span>整手 / 滑点 / 涨跌停</span><b>${fmt(context.lot_size, 0)} 股 / ${pct(context.slippage_pct)} / ${pct(context.price_limit_pct)}</b></div>
+    <div><span>最大持仓 / 总资金</span><b>${fmt(context.max_positions, 0)} 格 / ${fmt(context.capital, 0)} 元</b></div>
+    <div><span>每格股数 / 滑点 / 涨跌停</span><b>${fmt(context.shares_per_grid, 0)} 股 / ${pct(context.slippage_pct)} / ${pct(context.price_limit_pct)}</b></div>
     <div><span>破网止损 / 重启冷却</span><b>${pct(context.stop_loss_pct)} / ${fmt(context.restart_cooldown_days, 0)} 天</b></div>
     <div><span>最小闭环 / 浮亏惩罚</span><b>${fmt(data.summary?.min_loops, 0)} / ${fmt(data.summary?.open_loss_penalty, 2)}</b></div>
     <div><span>5 分钟数据</span><b>${esc(context.data_start)} ~ ${esc(context.data_end)}（${fmt(context.bar_count, 0)} 根）</b></div>
@@ -197,8 +198,8 @@ function summaryCard(data) {
   return `<div class="plateau-summary">
     <div><span>参数高原</span><b>${plateauText}</b></div>
     <div><span>最优系数 k*</span><b>${plateau ? fmt(plateau.k_star, 3) : '—'}</b></div>
-    <div><span>高原平均单格净收益</span><b>${plateau ? pct(plateau.mean_net_return_pct) : '—'}</b></div>
-    <div><span>k* 占网格资金</span><b>${plateau ? pct(plateau.k_star_capital_return_pct) : '—'}</b></div>
+    <div><span>高原平均单格收益</span><b>${plateau ? pct(plateau.mean_net_return_pct) : '—'}</b></div>
+    <div><span>k* 单格 / 总资金收益</span><b>${plateau ? `${pct(plateau.k_star_net_return_pct)} / ${pct(plateau.k_star_capital_return_pct)}` : '—'}</b></div>
     <div><span>k* 闭环 / 最大持仓</span><b>${plateau ? `${fmt(plateau.k_star_loops, 0)} / ${fmt(plateau.k_star_max_positions_used, 0)}` : '—'}</b></div>
     <div><span>剔除孤岛</span><b>${fmt(summary.island_count, 0)} 个</b></div>
     <div><span>先验重合</span><b>${prior.matches ? '是' : '否'}</b></div>
@@ -223,7 +224,7 @@ function holdoutCard(data) {
       <div><span>留出区间</span><b>${esc(holdout.oos_start)} ~ ${esc(holdout.oos_end)}</b></div>
       <div><span>锁定 k*</span><b>${fmt(holdout.k_star, 3)}</b></div>
       <div><span>留出净收益</span><b>${pct(holdout.net_return_pct)}</b></div>
-      <div><span>占网格资金</span><b>${pct(holdout.capital_return_pct)}</b></div>
+      <div><span>占总资金</span><b>${pct(holdout.capital_return_pct)}</b></div>
       <div><span>闭环 / 最大持仓</span><b>${fmt(holdout.loops, 0)} / ${fmt(holdout.max_positions_used, 0)}</b></div>
       <div><span>区间外天数（上/下）</span><b>${fmt(holdout.upper_breakout_days, 0)} / ${fmt(holdout.lower_breakout_days, 0)}</b></div>
     </div>
@@ -254,7 +255,7 @@ function boundaryWarning(data) {
     messages.push(`存在缺失或不完整的 5 分钟交易日（缺失 ${fmt(summary.missing_5m_days, 0)} 天，低 bar 数 ${fmt(summary.incomplete_days, 0)} 天），这些交易日已跳过撮合。`);
   }
   if ((data.curve || []).some(point => Number(point.capital_constrained_buys) > 0)) {
-    messages.push('部分档位因单格资金不足一手或现金不足被跳过，请提高单格资金 M 或降低整手股数。');
+    messages.push('部分档位因现金不足无法买入 100 股而被跳过，请提高总资金。');
   }
   if ((data.curve || []).some(point => Number(point.limit_locked_days) > 0)) {
     messages.push('检测到涨跌停封死日，这些交易日不撮合；阈值可在高级参数中调整。');
@@ -289,6 +290,7 @@ function liveCard(data) {
     <div class="plateau-live-meta">
       <span>实际执行系数 k<sub>exec</sub> <b>${fmt(live.k_exec, 3)}</b></span>
       <span>绝对格距 <b>${fmt(live.d_exec_abs, 3)} 元</b></span>
+      <span>有效往返成本 <b>${pct(live.effective_friction_pct)}</b></span>
       <span>净边际 <b>${pct(live.net_edge_pct)}</b></span>
       <span>安全底线步长 <b>${pct(live.safe_floor_pct)}</b></span>
     </div>
@@ -302,7 +304,7 @@ function breakoutCard(data) {
   if (!live) return '';
   const breakout = live.breakout || {};
   return `<div class="plateau-breakout-card">
-    <div class="blind-title">拐点触发（动态拉伸）参数</div>
+    <div class="blind-title">拐点触发（执行建议，不参与回测）</div>
     <div class="plateau-breakout-grid">
       <div><span>灵敏区基础步长</span><b>${pct(breakout.base_step_pct)}</b></div>
       <div><span>反弹买入触发</span><b>${pct(breakout.rebound_buy_pct)}</b></div>
@@ -311,7 +313,7 @@ function breakoutCard(data) {
       <div><span>参考买入价</span><b>${fmt(breakout.buy_trigger_price, 3)} 元</b></div>
       <div><span>参考卖出价</span><b>${fmt(breakout.sell_trigger_price, 3)} 元</b></div>
     </div>
-    <div class="note">窄幅震荡使用基础步长保留成交频次；单边拉升或下杀时，回落/反弹条件单把有效步长拉伸到 ${pct(breakout.stretch_step_pct)}。</div>
+    <div class="note">仅为实盘条件单建议，不参与历史回测；回测只使用基础步长。窄幅震荡用基础步长保留成交频次，单边拉升或下杀时，回落/反弹条件单把有效步长拉伸到 ${pct(breakout.stretch_step_pct)}。</div>
   </div>`;
 }
 
@@ -375,7 +377,7 @@ function policyRowsMarkup(rows, currentPolicy) {
   }).join('');
   return `<div class="table-scroll">
     <table class="intraday-table" style="min-width:820px">
-      <thead><tr><th>策略</th><th>高原</th><th>k*</th><th>样本内单格</th><th>留出单格</th><th>实盘步长</th><th>止损 / 重启</th><th>状态</th></tr></thead>
+      <thead><tr><th>策略</th><th>高原</th><th>k*</th><th>样本内收益</th><th>留出收益</th><th>实盘步长</th><th>止损 / 重启</th><th>状态</th></tr></thead>
       <tbody>${body}</tbody>
     </table>
   </div>`;
@@ -419,7 +421,7 @@ function curveTable(data) {
     <summary>完整 k 扫描明细</summary>
     <div class="table-scroll">
       <table class="intraday-table">
-        <thead><tr><th>k</th><th>单格净收益</th><th>占网格资金</th><th>选参值</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>最大持仓</th><th>止损/重启</th><th>标记</th></tr></thead>
+        <thead><tr><th>k</th><th>单格收益</th><th>总资金收益</th><th>选参值</th><th>闭环 n</th><th>盈利闭环</th><th>单次均值</th><th>期末浮盈亏</th><th>最大持仓</th><th>止损/重启</th><th>标记</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -444,6 +446,6 @@ export function renderPlateau(data, container) {
     </div>
     ${policyTable(data)}
     ${curveTable(data)}
-    <div class="note">实验模块：以 k × ATR(14)% 为唯一横轴，使用 0/1 阶跃触线撮合。按所选锚定策略布置阶梯，最多持有 N 个单格资金槽位，按格线成交，卖出受 T+1 约束；已处理 A 股整手、现金上限、滑点、涨跌停锁定和停牌/缺失日。默认前 70% 样本内选参、后 30% 留出验证，选参时对期末浮亏按惩罚系数扣减。结果不构成投资建议，也不替代滚动样本外验证和最终盲测。</div>
+    <div class="note">实验模块：以 k × ATR(14)% 为唯一横轴，使用 0/1 阶跃触线撮合。按所选锚定策略布置阶梯，每格固定 100 股，最多持有 N 个槽位，按格线成交，卖出受 T+1 约束；已处理固定 100 股、总资金上限、滑点、涨跌停锁定和停牌/缺失日。默认前 70% 样本内选参、后 30% 留出验证，选参时对期末浮亏按惩罚系数扣减。结果不构成投资建议，也不替代滚动样本外验证和最终盲测。</div>
   `;
 }

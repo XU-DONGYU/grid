@@ -150,12 +150,11 @@ d% = k × ATR(14)%
 ### 摩擦与安全底线
 
 ```text
-fee_effective% = max(fee, min_fee / M × 100)
-C% = 2 × fee_effective% + 0.05% 印花税 + spread_pct
+C% = 2 × 单边佣金% + 0.05% 印花税 + spread_pct
 k_min_safe = 10 × C% / mean(ATR14%)
 ```
 
-`k < k_min_safe` 为手续费磨损禁区，不参与高原选择。
+`k < k_min_safe` 为手续费磨损禁区，不参与高原选择。C% 是费率口径，不含最低佣金；最低佣金在逐笔 100 股实际盈亏中扣除。
 
 ### 固定区间网格与撮合
 
@@ -171,8 +170,8 @@ k_min_safe = 10 × C% / mean(ATR14%)
 - 最低价触及格线才成交；差一分钱不成交。
 - 当日买入当日不可卖出（T+1）。
 - 跳空时只处理前收盘价与开盘价之间的档位，不买开盘价上方的档位。
-- `lot_size=100` 时按 A 股一手取整，`lot_size=0` 时使用 `M / price` 的归一化数量。
-- 每个槽位的实际买入成本不能超过 M；总现金上限为 `M × max_positions`。
+- 每次触发固定买入 100 股。
+- 每个槽位的实际买入成本为 100 × 价格 + 佣金；总现金上限为 `capital`。
 - 滑点和半价差在买入时加价、卖出时减价；涨跌停封死日和 bar 数不足的交易日不撮合。
 
 对照策略：
@@ -186,10 +185,11 @@ k_min_safe = 10 × C% / mean(ATR14%)
 ### 收益与选参
 
 ```text
-单次闭环净利% = (卖出净额 - 买入总成本) / M × 100
+参考名义本金 = 100 × 样本内参考价格
+单次闭环净利% = (卖出净额 - 买入总成本) / 参考名义本金 × 100
 net_return_pct = Σ 单次闭环净利%
-n(k) = 有效闭环次数
-capital_return_pct = net_return_pct / max_positions
+n(k) = 有效止盈闭环次数（不含止损清仓）
+capital_return_pct = Σ 净利润 / 总资金 × 100
 selection_value = net_return_pct - open_loss_penalty × max(0, -期末浮盈亏)
 ```
 

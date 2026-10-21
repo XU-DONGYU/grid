@@ -147,9 +147,9 @@
 | 字段 | 默认值 | 说明 |
 |---|---|---|
 | `code` | 必填 | 股票代码 |
-| `grid_amount` | `10000` | 单格固定投入金额 M |
-| `max_positions` | `8` | 最大同时持仓槽位；网格资金 = M × 该值 |
-| `lot_size` | `100` | A 股整手股数；0 表示归一化数量 |
+| `capital` | `100000` | 总资金，同时作为现金上限 |
+| `shares_per_grid` | `100` | 每次触发固定买入 100 股 |
+| `max_positions` | `8` | 最大同时持仓槽位 |
 | `fee` | `0.025` | 单边佣金 % |
 | `min_fee` | `5` | 单笔最低佣金 |
 | `spread_pct` | `0.05` | 买卖价差代理 % |
@@ -192,20 +192,20 @@
 - `prior_validation`：与 `0.65–0.80 × ATR%` 先验带的重合关系
 - `holdout`：前 70% 样本内选参、后 30% 留出验证的锁定 k* 和结果
 - `policy_comparison`：锚定策略并排对照；`compare_anchor_policies=false` 时只返回当前策略一行，单策略失败时 `status=error`
-- `live`：`d_raw_pct`、`d_exec_pct`、`k_exec`、整数关口修正、拐点触发参数
+- `live`：`d_raw_pct`、`d_exec_pct`、`k_exec`、`effective_friction_pct`、整数关口修正、拐点触发参数
 - `summary`：k 数量、样本内/留出/总交易日、摩擦、`k_min_safe`、最大槽位、网格资金、锚定策略、整手、滑点、涨跌停阈值、破网止损、缺失日、孤岛数、原始最优是否落在禁区、合规高原是否贴近安全底线或右边界、样本提示
 - `config` / `data_snapshot`：本次参数和数据快照
 
 该接口为同步调用，计算量远小于 5 分钟滚动 OOS；数据有效但找不到连续高原时返回 200 与 `plateau=null`，由前端展示原因；完全没有可用数据时返回 400/404。找不到正收益高原或合规高原顶到 k 扫描右边界时，`live=null` 并返回原因。
 
-默认模型是 `fixed` 固定区间网格：启动时用自动或手动区间确定上下限，密度以 k × ATR% 冻结，之后档位不动；涨破上限和跌破下限默认都只等待回到区间。支持 `daily_roll`、`fixed_band`、`fixed`、`periodic` 对照；最多持有 `max_positions` 个槽位，支持 A 股整手、现金上限、滑点、涨跌停锁定、缺失日处理和可选破网止损。`net_return_pct` 是单格预算累计收益，`capital_return_pct` 是占网格总资金的收益。默认前 70% 交易日选参，后 30% 作为留出段只评估锁定的 `k*`；`compare_anchor_policies=true` 时会额外返回四种策略的对照表。前端为规避反向代理超时，先请求主策略出图，再逐个策略补齐对照表。
+默认模型是 `fixed` 固定区间网格：启动时用自动或手动区间确定上下限，密度以 k × ATR% 冻结，之后档位不动；涨破上限和跌破下限默认都只等待回到区间。每格固定买入 `shares_per_grid` 股，默认 100 股；现金上限为 `capital`。支持 `daily_roll`、`fixed_band`、`fixed`、`periodic` 对照；支持滑点、涨跌停锁定、缺失日处理和可选破网止损（默认 0，不强制止损）。`net_return_pct` 是 100 股参考名义本金上的单格累计净收益，`capital_return_pct` 是占总资金的收益。单边佣金来自请求 `fee`，最低佣金来自 `min_fee`，卖出印花税固定 0.05%；最低佣金计入逐笔盈亏，但不进入理论 C%。默认前 70% 交易日选参，后 30% 作为留出段只评估锁定的 `k*`；`compare_anchor_policies=true` 时会额外返回四种策略的对照表。前端为规避反向代理超时，先请求主策略出图，再逐个策略补齐对照表。
 
 ## GET /api/health
 
 返回：
 
 ```json
-{"ok": true, "version": "2.7.0", "env": "development"}
+{"ok": true, "version": "2.8.0", "env": "development"}
 ```
 
 ## GET /api/version
@@ -213,7 +213,7 @@
 返回：
 
 ```json
-{"version": "2.7.0", "schema_version": 2}
+{"version": "2.8.0", "schema_version": 2}
 ```
 
 ## 错误响应

@@ -388,9 +388,9 @@ class IntradayJobStatusResponse(ApiModel):
 
 class PlateauRequest(ApiModel):
     code: str
-    grid_amount: float = Field(10_000, ge=100, le=1e8)
+    capital: float = Field(100_000, ge=1000, le=1e8)
+    shares_per_grid: int = Field(100, ge=1, le=10000)
     max_positions: int = Field(8, ge=1, le=50)
-    lot_size: int = Field(100, ge=0, le=10000)
     fee: float = Field(0.025, ge=0, le=0.3)
     min_fee: float = Field(5.0, ge=0, le=100)
     spread_pct: float = Field(0.05, ge=0, le=5)
@@ -568,6 +568,7 @@ class PlateauLive(ApiModel):
     d_exec_abs: float
     k_exec: float
     friction_pct: float
+    effective_friction_pct: float
     net_edge_pct: float
     safe_floor_pct: float
     front_run: PlateauFrontRun
@@ -613,7 +614,7 @@ class PlateauSummary(ApiModel):
     band_upper: float
     band_source: str
     min_loops: int
-    lot_size: int
+    shares_per_grid: int
     slippage_pct: float
     price_limit_pct: float
     stop_loss_pct: float
@@ -646,7 +647,8 @@ class PlateauContext(ApiModel):
     latest_price: float
     latest_atr: float
     latest_atr_pct: float
-    grid_amount: float
+    capital: float
+    shares_per_grid: int
     max_positions: int
     grid_capital: float
     fee: float
@@ -658,7 +660,6 @@ class PlateauContext(ApiModel):
     k_min_safe: float
     mode: str
     anchor_policy: str
-    lot_size: int
     price_limit_pct: float
     stop_loss_pct: float
     restart_cooldown_days: int

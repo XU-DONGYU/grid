@@ -58,12 +58,12 @@ def bar(day: str, time: str, open_: float, close: float, high: float, low: float
 
 def make_config(**overrides: object) -> PlateauConfig:
     values: dict = {
-        "grid_amount": 10_000,
+        "capital": 1_000_000,
+        "shares_per_grid": 100,
         "fee": 0.0,
         "min_fee": 0.0,
         "spread_pct": 0.0,
         "slippage_pct": 0.0,
-        "lot_size": 0,
         "price_limit_pct": 0.0,
         "holdout_ratio": 0.0,
     }
@@ -79,9 +79,9 @@ def test_plateau_k_values_default_range() -> None:
 
 
 def test_safe_k_floor_and_friction() -> None:
-    config = PlateauConfig(grid_amount=10_000, fee=0.025, min_fee=5, spread_pct=0.05)
-    friction = effective_friction_pct(config)
-    assert friction == pytest.approx(0.05 * 2 + 0.05 + 0.05)
+    config = PlateauConfig(shares_per_grid=100, fee=0.025, min_fee=5, spread_pct=0.05)
+    friction = effective_friction_pct(config, 100.0)
+    assert friction == pytest.approx(0.025 * 2 + 0.05 + 0.05)
     assert safe_k_floor(0.1, 2.0) == pytest.approx(0.5)
     assert math.isinf(safe_k_floor(0.1, 0.0))
 
@@ -145,11 +145,10 @@ def test_step_trigger_buys_after_crossing_and_respects_t_plus_one() -> None:
         "2025-01-04": [bar("2025-01-04", "09:35", 100, 100, 101, 99)],
     }
     result = simulate_k(bars_by_day, day_steps, make_config())
-    gross_pct = (100 / 98 - 1) * 100
-    stamp_pct = (100 / 98) * STAMP_TAX * 100
+    net_profit = (100 - 98) * 100 - 100 * 100 * STAMP_TAX
     assert result["loops"] == 1
     assert result["open_position_count"] == 0
-    assert result["net_return_pct"] == pytest.approx(gross_pct - stamp_pct)
+    assert result["net_return_pct"] == pytest.approx(net_profit / 1_000_000 * 100)
     assert result["max_positions_used"] == 1
 
 
@@ -177,10 +176,9 @@ def test_static_mode_uses_percentage_step() -> None:
         "2025-01-03": [bar("2025-01-03", "09:35", 100, 100, 101, 99)],
     }
     result = simulate_k(bars_by_day, day_steps, make_config(mode="static_mean"))
-    gross_pct = (100 / 98 - 1) * 100
-    stamp_pct = (100 / 98) * STAMP_TAX * 100
+    net_profit = (100 - 98) * 100 - 100 * 100 * STAMP_TAX
     assert result["loops"] == 1
-    assert result["net_return_pct"] == pytest.approx(gross_pct - stamp_pct)
+    assert result["net_return_pct"] == pytest.approx(net_profit / 1_000_000 * 100)
 
 
 def test_rolling_ladder_rearms_in_a_trend_and_caps_positions() -> None:
@@ -200,7 +198,7 @@ def test_rolling_ladder_rearms_in_a_trend_and_caps_positions() -> None:
     assert result["loops"] == 4
     assert result["max_positions_used"] == 2
     assert result["max_positions"] == 2
-    assert result["capital_return_pct"] == pytest.approx(result["net_return_pct"] / 2)
+    assert result["capital_return_pct"] == pytest.approx(result["net_return_pct"])
 
 
 def test_default_is_fixed_band_without_stop() -> None:
@@ -324,7 +322,7 @@ def test_lot_rounding_and_capital_constraint() -> None:
     traded = simulate_k(
         bars_by_day,
         day_steps,
-        make_config(lot_size=100, max_positions=1),
+        make_config(max_positions=1),
     )
     assert traded["loops"] == 1
     assert traded["capital_constrained_buys"] == 0
@@ -339,7 +337,7 @@ def test_lot_rounding_and_capital_constraint() -> None:
             "2025-01-02": step("2025-01-02", 4.0, 200.0),
             "2025-01-03": step("2025-01-03", 4.0, 204.0),
         },
-        make_config(lot_size=100, max_positions=1),
+        make_config(max_positions=1, capital=10_000),
     )
     assert expensive["loops"] == 0
     assert expensive["open_position_count"] == 0
@@ -606,7 +604,7 @@ def test_run_plateau_scan_returns_chart_ready_payload() -> None:
     days = trading_days(40)
     bars_5m, daily = make_scan_bars(days)
     config = make_config(
-        grid_amount=100_000,
+        capital=100_000,
         k_start=0.2,
         k_end=1.0,
         k_step=0.1,
@@ -630,7 +628,7 @@ def test_run_plateau_scan_holdout_uses_in_sample_only_for_selection() -> None:
     days = trading_days(60)
     bars_5m, daily = make_scan_bars(days)
     config = make_config(
-        grid_amount=100_000,
+        capital=100_000,
         k_start=0.2,
         k_end=1.0,
         k_step=0.1,
@@ -652,9 +650,11 @@ def test_run_plateau_scan_marks_all_forbidden_without_live_output() -> None:
     days = trading_days(40)
     bars_5m, daily = make_scan_bars(days)
     config = PlateauConfig(
-        grid_amount=100,
+        capital=10_000,
+        shares_per_grid=1,
         fee=0.025,
         min_fee=5,
+        friction_pct=2.0,
         k_start=0.2,
         k_end=1.0,
         k_step=0.1,
